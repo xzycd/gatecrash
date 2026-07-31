@@ -1,6 +1,6 @@
 {
   "name": "@xzycd/guestlist",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Replay captured web requests across sessions and inspect access-control differences.",
   "type": "module",
   "bin": {
@@ -45,6 +45,7 @@
   "dependencies": {
     "commander": "^15.0.0",
     "ink": "^7.1.1",
+    "parse5": "^8.0.1",
     "react": "^19.2.8",
     "yaml": "^2.9.0"
   },

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1
+
+- Parse HTML with `parse5` instead of filtering tags with regular expressions.
+- Keep script, style, SVG, and template content out of visible-text comparison.
+
 ## 0.1.0
 
 - Read browser HAR files, URL lists, and common crawler JSONL fields.

@@ -1,4 +1,5 @@
 import {createHash} from 'node:crypto';
+import {parse, type DefaultTreeAdapterMap} from 'parse5';
 import type {BodyKind, InternalResponse, ResponseRecord} from './types.js';
 
 interface FingerprintInput {
@@ -54,19 +55,32 @@ function normalizeText(value: string): string {
   return value.replaceAll(/\s+/g, ' ').trim();
 }
 
-function visibleHtml(value: string): string {
-  return normalizeText(
-    value
-      .replaceAll(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
-      .replaceAll(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
-      .replaceAll(/<svg\b[^>]*>[\s\S]*?<\/svg>/gi, ' ')
-      .replaceAll(/<!--([\s\S]*?)-->/g, ' ')
-      .replaceAll(/<[^>]+>/g, ' ')
-      .replaceAll('&nbsp;', ' ')
-      .replaceAll('&amp;', '&')
-      .replaceAll('&lt;', '<')
-      .replaceAll('&gt;', '>'),
-  );
+type HtmlNode = DefaultTreeAdapterMap['node'];
+
+function htmlSignals(value: string): {text: string; tags: Set<string>} {
+  const document = parse(value);
+  const text: string[] = [];
+  const tags = new Set<string>();
+  const hiddenTags = new Set(['script', 'style', 'svg', 'template']);
+
+  const visit = (node: HtmlNode, hidden: boolean): void => {
+    const tagName = 'tagName' in node ? node.tagName.toLowerCase() : undefined;
+    const nextHidden = hidden || tagName !== undefined && hiddenTags.has(tagName);
+    if (tagName !== undefined) {
+      tags.add(tagName);
+    }
+    if (node.nodeName === '#text' && 'value' in node && !nextHidden) {
+      text.push(node.value);
+    }
+    if ('childNodes' in node) {
+      for (const child of node.childNodes) {
+        visit(child, nextHidden);
+      }
+    }
+  };
+
+  visit(document, false);
+  return {text: normalizeText(text.join(' ')), tags};
 }
 
 function scalarType(value: unknown): string {
@@ -131,10 +145,10 @@ export function fingerprintResponse(input: FingerprintInput): InternalResponse {
     structure = json.structure;
     tokens = json.tokens;
   } else if (kind === 'html') {
-    normalized = visibleHtml(text);
+    const html = htmlSignals(text);
+    normalized = html.text;
     tokens = tokenize(normalized);
-    const tags = text.toLowerCase().match(/<([a-z][a-z0-9-]*)\b/g) ?? [];
-    structure = new Set(tags.map((tag) => tag.slice(1)));
+    structure = html.tags;
   } else if (kind === 'text') {
     normalized = normalizeText(text);
     tokens = tokenize(normalized);

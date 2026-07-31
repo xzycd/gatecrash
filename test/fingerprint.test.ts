@@ -25,6 +25,18 @@ function response(profile: string, status: number, body: string) {
   });
 }
 
+function htmlResponse(profile: string, body: string) {
+  return fingerprintResponse({
+    profile,
+    status: 200,
+    contentType: 'text/html',
+    body: encoder.encode(body),
+    durationMs: 2,
+    truncated: false,
+    volatileJsonKeys: [],
+  });
+}
+
 describe('response fingerprints', () => {
   it('removes configured volatile JSON values', () => {
     const left = response('alice', 200, '{"user":"alice","requestId":"one"}');
@@ -61,5 +73,12 @@ describe('response fingerprints', () => {
     const right = response('bob', 204, '');
     const result = compareResponses(left, right, alice, bob, compare);
     expect(result).toMatchObject({outcome: 'review', exact: false, similarity: 1});
+  });
+
+  it('uses parsed visible HTML text and ignores executable content', () => {
+    const left = htmlResponse('alice', '<main>Alice &amp; team<script>secretOne()</script></main>');
+    const right = htmlResponse('bob', '<main>Alice &amp; team<script>secretTwo()</script></main>');
+    expect(left.normalized).toBe('Alice & team');
+    expect(responseSimilarity(left, right)).toBe(1);
   });
 });
