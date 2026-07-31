@@ -7,3 +7,7 @@ updates:
     groups:
       development:
         dependency-type: development
+    ignore:
+      # typescript-eslint 8.65 supports TypeScript below 6.1.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
