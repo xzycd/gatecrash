@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-labelledby="title description">
+  <title id="title">Guestlist authorization mapper</title>
+  <description id="description">Guestlist wordmark beside a compact matrix comparing access for Alice, Bob, and an anonymous session.</description>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#111016"/>
+      <stop offset="1" stop-color="#09090C"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#B9A7FF" stop-opacity="0.72"/>
+      <stop offset="1" stop-color="#F08A7E" stop-opacity="0.18"/>
+    </linearGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#FFFFFF" stroke-opacity="0.025"/>
+    </pattern>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="16"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="360" rx="28" fill="url(#background)"/>
+  <rect width="1200" height="360" rx="28" fill="url(#grid)"/>
+  <rect x="1" y="1" width="1198" height="358" rx="27" fill="none" stroke="#FFFFFF" stroke-opacity="0.09"/>
+  <ellipse cx="836" cy="181" rx="250" ry="136" fill="#8B6FFF" opacity="0.07" filter="url(#glow)"/>
+
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace">
+    <text x="74" y="78" fill="#8172BE" font-size="13" font-weight="700" letter-spacing="3">AUTHORIZATION MAPPER</text>
+    <text x="70" y="166" fill="#F2F0EA" font-size="72" font-weight="650" letter-spacing="-4">guestlist</text>
+    <text x="75" y="207" fill="#9A96A3" font-size="18">same request. different session.</text>
+
+    <g transform="translate(74 254)">
+      <rect width="72" height="30" rx="15" fill="#B9A7FF" fill-opacity="0.11" stroke="#B9A7FF" stroke-opacity="0.32"/>
+      <text x="36" y="20" text-anchor="middle" fill="#B9A7FF" font-size="12">HAR</text>
+      <rect x="82" width="116" height="30" rx="15" fill="#B9A7FF" fill-opacity="0.11" stroke="#B9A7FF" stroke-opacity="0.32"/>
+      <text x="140" y="20" text-anchor="middle" fill="#B9A7FF" font-size="12">KATANA JSONL</text>
+      <rect x="208" width="72" height="30" rx="15" fill="#B9A7FF" fill-opacity="0.11" stroke="#B9A7FF" stroke-opacity="0.32"/>
+      <text x="244" y="20" text-anchor="middle" fill="#B9A7FF" font-size="12">URLS</text>
+    </g>
+
+    <g transform="translate(620 48)">
+      <rect width="506" height="264" rx="18" fill="#111117" stroke="#FFFFFF" stroke-opacity="0.11"/>
+      <rect x="1" y="1" width="504" height="3" rx="2" fill="url(#edge)"/>
+      <circle cx="27" cy="29" r="4" fill="#F08A7E"/>
+      <text x="42" y="34" fill="#D2CEDA" font-size="13">access map</text>
+      <text x="286" y="34" fill="#686572" font-size="10">ALICE</text>
+      <text x="360" y="34" fill="#686572" font-size="10">BOB</text>
+      <text x="425" y="34" fill="#686572" font-size="10">ANON</text>
+      <path d="M22 49H484" stroke="#FFFFFF" stroke-opacity="0.07"/>
+
+      <text x="24" y="82" fill="#F08A7E" font-size="12">◆ GET /api/account/alice</text>
+      <text x="292" y="82" fill="#8FCB9B" font-size="12">200</text>
+      <text x="362" y="82" fill="#F08A7E" font-size="12">200</text>
+      <text x="430" y="82" fill="#777480" font-size="12">401</text>
+
+      <text x="24" y="120" fill="#F08A7E" font-size="12">◆ GET /api/member/export</text>
+      <text x="292" y="120" fill="#8FCB9B" font-size="12">200</text>
+      <text x="362" y="120" fill="#8FCB9B" font-size="12">200</text>
+      <text x="430" y="120" fill="#F08A7E" font-size="12">200</text>
+
+      <text x="24" y="158" fill="#D2CEDA" font-size="12">  GET /api/me</text>
+      <text x="292" y="158" fill="#8FCB9B" font-size="12">200</text>
+      <text x="362" y="158" fill="#8FCB9B" font-size="12">200</text>
+      <text x="430" y="158" fill="#777480" font-size="12">401</text>
+
+      <path d="M22 182H484" stroke="#FFFFFF" stroke-opacity="0.07"/>
+      <rect x="24" y="204" width="66" height="24" rx="12" fill="#F08A7E" fill-opacity="0.14"/>
+      <text x="57" y="220" text-anchor="middle" fill="#F08A7E" font-size="10" font-weight="700">REVIEW</text>
+      <text x="104" y="220" fill="#8D8997" font-size="11">2 exact matches crossed a boundary</text>
+      <text x="24" y="248" fill="#5E5A67" font-size="10">GST-E9CA3C  ·  deterministic evidence</text>
+    </g>
+  </g>
+</svg>

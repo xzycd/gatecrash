@@ -1,0 +1,35 @@
+name: Bug report
+description: Report a reproducible Guestlist problem without target data.
+title: "bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not attach real captures, tokens, headers, query values, or response bodies.
+  - type: input
+    id: version
+    attributes:
+      label: Guestlist version
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: input
+    id: node
+    attributes:
+      label: Node version and operating system
+      placeholder: Node 26.0.0 on macOS 15
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: Prefer the built-in doorlab or a small invented fixture.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true

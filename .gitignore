@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage/
+.guestlist/
+.DS_Store
+.env
+.env.*
+*.tgz
+
+# Local notes for coding agents. Keep project guidance in tracked docs.
+CLAUDE.md
+others.md

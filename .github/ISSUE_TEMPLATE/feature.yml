@@ -1,0 +1,26 @@
+name: Feature request
+description: Propose a focused improvement to the authorization workflow.
+title: "proposal: "
+labels: [proposal]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What authorized testing task is difficult today?
+    validations:
+      required: true
+  - type: textarea
+    id: example
+    attributes:
+      label: Example command or output
+      description: A small concrete example is more useful than a feature list.
+    validations:
+      required: true
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Sample safety
+      options:
+        - label: The request contains no real target data or credentials.
+          required: true
