@@ -9,6 +9,11 @@ type UnknownRecord = Record<string, unknown>;
 const CAPTURE_MAXIMUM_BYTES = 100_000_000;
 const CAPTURE_MAXIMUM_REQUESTS = 100_000;
 const CAPTURE_MAXIMUM_URL_LENGTH = 16_384;
+// A captured body is replayed once per profile, so a single HAR entry decides
+// how much Gatecrash uploads to the target. Generous enough for a real file
+// upload, bounded enough that a crafted capture cannot turn the tool into an
+// amplifier pointed at somebody's staging environment.
+const CAPTURE_MAXIMUM_BODY_BYTES = 8_000_000;
 const HTTP_METHOD = /^[A-Z][A-Z0-9-]{0,31}$/;
 const HEADER_NAME = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 
@@ -119,6 +124,12 @@ export function parseHar(value: unknown, source = 'HAR input'): CapturedRequest[
     const method = parseMethod(methodValue, `${source}, entry ${index + 1}`);
     const postData = isRecord(entry.request.postData) ? entry.request.postData : undefined;
     const body = typeof postData?.text === 'string' ? postData.text : undefined;
+    if (body !== undefined && Buffer.byteLength(body, 'utf8') > CAPTURE_MAXIMUM_BODY_BYTES) {
+      throw new GatecrashError(
+        `Request body in ${source}, entry ${index + 1} is larger than ${CAPTURE_MAXIMUM_BODY_BYTES.toLocaleString()} bytes.`,
+        {hint: 'Remove the large upload from the capture before replaying it.'},
+      );
+    }
     const url = parseUrl(urlValue, `${source}, entry ${index + 1}`);
     requests.push({
       method,

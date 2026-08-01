@@ -16,10 +16,40 @@ export interface UpdateCommandOptions {
   force: boolean;
 }
 
-function installArchive(path: string): Promise<void> {
-  const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const INSTALL_ARCHIVE = /(?:^|[\\\\/])xzycd-gatecrash-(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.tgz$/;
+const UNSAFE_WINDOWS_PATH = /[\r\n"&|<>()^%!]/;
+
+/**
+ * Build the exact npm command so the Windows shell boundary stays testable.
+ * Node cannot execute npm.cmd directly on current Windows releases. cmd.exe
+ * receives fixed arguments plus a locally generated archive path; shell
+ * metacharacters and unexpected archive names are rejected first.
+ */
+export function installCommand(archivePath: string, platform: string = process.platform): {
+  command: string;
+  args: string[];
+} {
+  if (!INSTALL_ARCHIVE.test(archivePath)) {
+    throw new GatecrashError('Refusing to install an unrecognised Gatecrash archive.');
+  }
+
+  const args = ['install', '--global', '--ignore-scripts', archivePath];
+  if (platform === 'win32') {
+    if (UNSAFE_WINDOWS_PATH.test(archivePath)) {
+      throw new GatecrashError('Refusing to pass an unsafe archive path to npm on Windows.');
+    }
+    return {
+      command: process.env.ComSpec ?? 'cmd.exe',
+      args: ['/d', '/s', '/v:off', '/c', 'npm', ...args],
+    };
+  }
+  return {command: 'npm', args};
+}
+
+function installArchive(archivePath: string): Promise<void> {
+  const {command, args} = installCommand(archivePath);
   return new Promise((resolve, reject) => {
-    const child = spawn(npm, ['install', '--global', path], {
+    const child = spawn(command, args, {
       shell: false,
       stdio: 'inherit',
     });

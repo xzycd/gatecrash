@@ -131,8 +131,8 @@ may substitute for information hierarchy.
 
 The signature shape is a request diamond passing through a split vertical gate.
 Rails are straight, corners are sparse, and status lamps are one character.
-The terminal uses no rounded containers. The rounded outer frame in the GitHub
-banner belongs only to the asset canvas, not to the working interface.
+The terminal uses no rounded containers. The GitHub banner is a restrained
+snapshot of the real access map, not a separate poster treatment.
 
 ## Components
 

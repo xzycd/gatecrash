@@ -1,3 +1,4 @@
+import {basename} from 'node:path';
 import {loadCapture} from './capture.js';
 import {prepareRoutes} from './normalize.js';
 import {selectedProfiles} from './run.js';
@@ -47,5 +48,9 @@ export async function inspectCapture(
   allowedMethods: Set<string>,
 ): Promise<InspectionResult> {
   const requests = await loadCapture(capturePath);
-  return inspectRequests(requests, config, allowedMethods, capturePath);
+  // A basename, never the directory it sat in. `inspect --format json` is
+  // pasted into tickets and chat, and `check` has always labelled its input
+  // this way; passing the whole path here leaked the operator's local layout
+  // into every preview.
+  return inspectRequests(requests, config, allowedMethods, basename(capturePath));
 }

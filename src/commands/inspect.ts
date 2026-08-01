@@ -1,8 +1,7 @@
 import {loadConfig} from '../core/config.js';
 import {GatecrashError} from '../core/errors.js';
 import {inspectCapture} from '../core/inspect.js';
-import {plainInspection} from '../ui/plain.js';
-import {showInspectionInterface} from '../ui/run.js';
+import {writeInspection} from '../ui/surface.js';
 import {allowedMethods} from './shared.js';
 
 export interface InspectCommandOptions {
@@ -28,9 +27,5 @@ export async function runInspectCommand(
     process.stdout.write(`${JSON.stringify(inspection, null, 2)}\n`);
     return;
   }
-  if (!options.plain && process.stdout.isTTY) {
-    showInspectionInterface(inspection);
-    return;
-  }
-  process.stdout.write(plainInspection(inspection));
+  writeInspection(inspection, {plain: options.plain});
 }

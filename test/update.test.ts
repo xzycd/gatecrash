@@ -55,6 +55,21 @@ describe('GitHub updater', () => {
     await expect(findRelease(undefined, untrusted)).rejects.toThrowError(/untrusted release page/);
   });
 
+  it('rejects releases with missing or oversized package assets', async () => {
+    const missingArchive: ReleaseFetcher = async () => new Response(JSON.stringify(releaseJson({
+      assets: [{name: 'SHA256SUMS', browser_download_url: checksumsUrl, size: 100}],
+    })));
+    await expect(findRelease(undefined, missingArchive)).rejects.toThrowError(/does not contain/);
+
+    const oversizedArchive: ReleaseFetcher = async () => new Response(JSON.stringify(releaseJson({
+      assets: [
+        {name: archiveName, browser_download_url: archiveUrl, size: 50_000_001},
+        {name: 'SHA256SUMS', browser_download_url: checksumsUrl, size: 100},
+      ],
+    })));
+    await expect(findRelease(undefined, oversizedArchive)).rejects.toThrowError(/unexpectedly large/);
+  });
+
   it('verifies the release archive before returning it', async () => {
     const archive = new TextEncoder().encode('archive');
     const checksum = createHash('sha256').update(archive).digest('hex');

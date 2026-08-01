@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/banner.svg" alt="Gatecrash, an authorization boundary mapper for captured web traffic" width="920">
+<img src="docs/banner.svg" alt="Gatecrash terminal access map comparing routes across three sessions" width="920">
 
 **Replay a captured request with the wrong session and see what still gets in.**
 
@@ -21,7 +21,21 @@ responses become review leads.
 Gatecrash does not declare vulnerabilities. HTTP similarity cannot tell you the
 application's intended policy, so the final judgment stays with the tester.
 
-## Install locally
+## Install
+
+From npm:
+
+```bash
+npm install --global @xzycd/gatecrash
+gatecrash --version
+```
+
+For a stricter install that disables all package lifecycle scripts and pins the
+exact release:
+
+```bash
+npm install --global --ignore-scripts @xzycd/gatecrash@0.6.0
+```
 
 From a Gatecrash checkout:
 
@@ -39,7 +53,7 @@ source tree.
 ## Try the local lab
 
 ```bash
-npm install -g github:xzycd/gatecrash
+npm install --global @xzycd/gatecrash
 gatecrash demo
 ```
 
@@ -47,32 +61,37 @@ The demo binds to a random loopback port, contains two deliberate authorization
 mistakes, and shuts down after the run.
 
 ```text
-◆╾┫ gatecrash / check
+  gatecrash  http://127.0.0.1:54751 ─────────────────────  3 routes · 3 sessions · 212 ms
 
-http://127.0.0.1:50641                    3 routes × 3 sessions · 208 ms
+  ╭─ EXACT MATCH ──────────────────────────────────────────────────────────────────────────╮
+  │  2 routes returned a byte-identical successful response to bob, anonymous. Check each  │
+  │  against the access policy the application is supposed to enforce, then treat what is  │
+  │  left as a finding.                                                                    │
+  ╰────────────────────────────────────────────────────────────────────────────────────────╯
 
-ACCESS MAP  3 routes · 3 sessions
+  2 sessions received responses they should have had to earn.
 
-REQUEST                                   alice/base  bob         anonymous
-──────────────────────────────────────────────────────────────────────────────
-! GET /api/account/alice                  200 ●       200 !       401 ×
-! GET /api/member/export                  200 ●       200 ≠       200 !
-  GET /api/me                             200 ●       200 ≠       401 ×
+  access map ─────────────────────────────────────────────────────  3 routes · 3 sessions
 
-● baseline  ! review  × blocked  ≠ changed  ? inconclusive
+    request                 alice/base    bob           anonymous
+  ▌ GET /api/account/alice  200 ●         200 !         401 ✓
+  ▌ GET /api/member/export  200 ●         200 ≠         200 !
+  ▌ GET /api/me             200 ●         200 ≠         401 ✓
 
-2 NEED REVIEW
+  ● baseline  ·  ! review  ·  ✓ blocked  ·  ≠ changed  ·  ? inconclusive
 
-! GTC-7A1F0B HIGH GET /api/account/alice
-  alice 200 ─────── bob 200 exact match
-  bob received the same successful response as alice.
+  ▌ ██████████ exact  GTC-7A1F0B  GET /api/account/alice                              review
+  ▌ ├ alice 200 → bob 200
+  ▌ │   bob received the same successful response as alice.
+  ▌ └ the normalized response bodies are identical
 
-! GTC-B0BB10 HIGH GET /api/member/export
-  alice 200 ─────── anonymous 200 exact match
-  anonymous received the same successful response as alice.
+  ▌ ██████████ exact  GTC-B0BB10  GET /api/member/export                              review
+  ▌ ├ alice 200 → anonymous 200
+  ▌ │   anonymous received the same successful response as alice.
+  ▌ └ the normalized response bodies are identical
 
-2 REVIEW  2 BLOCKED  2 CHANGED  0 ERRORS  2 SKIPPED
-next    gatecrash explain GTC-7A1F0B
+  ██████████████████  3 routes · 2 review · 2 changed · 2 blocked · 2 skipped
+  › gatecrash explain GTC-7A1F0B   to read the evidence behind one
 ```
 
 The port and timing change on each run. The rest comes from the current demo.
@@ -158,7 +177,9 @@ gatecrash update 0.6.0
 
 Gatecrash accepts only release assets published under `xzycd/gatecrash`, then
 matches the downloaded npm archive against that release's `SHA256SUMS` before
-starting a global npm install. Installing an older release requires `--force`.
+starting a global npm install with package scripts disabled. Temporary update
+files are removed after the attempt. Installing an older release requires
+`--force`.
 
 ## Capture formats
 
@@ -182,13 +203,13 @@ names only, such as `/search?q&page`.
 ## Reading the map
 
 Each cell includes a status code and a symbol, so the result still reads with
-color disabled.
+color disabled. Color supports a label here and never carries one on its own.
 
 | Symbol | Outcome | Meaning |
 |---:|---|---|
 | `●` | baseline | The configured baseline response. |
 | `!` | review | A lower or equal profile received a matching successful response. |
-| `×` | blocked | The challenger received a redirect, `401`, `403`, or `404`. |
+| `✓` | blocked | The challenger received a redirect, `401`, `403`, or `404`. |
 | `≠` | changed | Both sessions succeeded, but their response bodies differ. |
 | `=` | same | The bodies match, but the challenger has a higher configured level. |
 | `?` | inconclusive | The baseline failed or the challenger returned another status. |
@@ -219,9 +240,19 @@ Gatecrash is for systems you own or have permission to test.
   100,000 replay requests so an accidental export cannot become an unbounded
   run.
 - Reports contain no request headers, response headers, cookies, tokens, request
-  bodies, response bodies, or query values.
+  bodies, response bodies, or query values. A query part with no `=` is treated
+  as a value, not as a name, so a bare token never reaches a saved report.
 - Report files are replaced atomically and use mode `0600` where the platform
-  supports it.
+  supports it, and are read back through a bounded read on the open descriptor
+  rather than a size check on the path.
+- Response fingerprinting is bounded in stack, heap, and time, so a target that
+  answers with deeply nested JSON or a tag bomb costs a fixed amount of work
+  instead of crashing the run or holding it for ten seconds a route.
+- Anything printed to a terminal has its control, bidi, and zero-width
+  characters removed first, so a path from a hostile capture cannot repaint the
+  screen or reorder what it says.
+- Saved Markdown escapes link and image syntax, so a crafted path cannot arrive
+  at a reviewer as a working link.
 
 Allow another method only after checking its side effects:
 
@@ -245,9 +276,11 @@ Exit codes are stable:
 - `1` means the command could not complete.
 - `2` means a check completed with review results and `--fail-on-review` was set.
 
-The live interface renders inline. It does not use the alternate screen or clear
-scrollback. Non-TTY output switches to plain text, and JSON stdout contains JSON
-only.
+The live progress line renders inline on stderr and erases itself when the run
+ends. It does not use the alternate screen or clear scrollback, so the finished
+report stays in scrollback. Color degrades from 24-bit to the 256 palette to
+none, box drawing degrades to ASCII when the terminal cannot promise UTF-8, and
+JSON stdout contains JSON only.
 
 ## Current limits
 
@@ -268,8 +301,9 @@ npm run demo
 ```
 
 The test suite covers config parsing, capture sanitization, scope enforcement,
-fingerprinting, classification, report privacy, the terminal surface, the CLI
-process, and a complete run against the loopback lab. Read
+fingerprinting, classification, report privacy, hostile input, every rendering
+path at five terminal widths, the CLI process, and a complete run against the
+loopback lab. Read
 [CONTRIBUTING.md](CONTRIBUTING.md) before changing the report schema or replay
 behavior.
 

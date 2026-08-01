@@ -1,7 +1,7 @@
 {
   "name": "@xzycd/gatecrash",
   "version": "0.6.0",
-  "description": "Replay captured web requests across sessions and map authorization boundaries.",
+  "description": "Replay captured web requests across sessions and see which routes remain open to the wrong user.",
   "type": "module",
   "bin": {
     "gatecrash": "dist/cli.js"
@@ -9,6 +9,7 @@
   "files": [
     "dist",
     "docs",
+    "npm-shrinkwrap.json",
     "CHANGELOG.md",
     "LICENSE",
     "README.md",
@@ -17,10 +18,12 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "check": "npm run typecheck && npm run lint && npm test && npm run build",
-    "demo": "tsx src/cli.tsx demo --plain --no-save",
-    "dev": "tsx src/cli.tsx",
+    "demo": "tsx src/cli.ts demo --plain --no-save",
+    "dev": "tsx src/cli.ts",
     "lint": "eslint .",
     "prepare": "npm run build",
+    "prepublishOnly": "npm run check && npm run release:verify",
+    "release:verify": "node scripts/verify-release.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
@@ -31,6 +34,11 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/xzycd/gatecrash.git"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "registry": "https://registry.npmjs.org/"
   },
   "bugs": {
     "url": "https://github.com/xzycd/gatecrash/issues"
@@ -50,17 +58,13 @@
   "author": "Audangas",
   "dependencies": {
     "commander": "^15.0.0",
-    "ink": "^7.1.1",
     "parse5": "^8.0.1",
-    "react": "^19.2.8",
     "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "^26.1.2",
-    "@types/react": "^19.2.18",
     "eslint": "^10.8.0",
-    "ink-testing-library": "^4.0.0",
     "tsx": "^4.23.1",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.65.0",
