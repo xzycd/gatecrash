@@ -44,35 +44,28 @@
   on the path followed by an unbounded read of it.
 - Cap a captured request body at 8 MB.
 - Fix `gatecrash update` on Windows, where Node refuses to spawn a `.cmd` file
-  without a shell. The command line is now built by a function that re-checks
-  the version against a strict pattern and is asserted on in tests, so the fix
-  is not `shell: true`.
+  without a shell. The command line now accepts only the locally generated,
+  verified archive path and is asserted on in tests.
 - Do not let a failed cleanup replace the real error when writing a report.
 
 ### Docs
 
 - Add `docs/go-rewrite.md`: measurements behind the decision to stay on
   TypeScript and run the single-binary experiment first.
-- Correct the 0.6.0 entry below. It claimed the published SHA-256 checksum was
-  verified before invoking npm. It is not: `SHA256SUMS` is required to exist and
-  its location and size are validated, and the integrity check itself is npm's,
-  against the registry archive. The behaviour has not changed; the claim was
-  wrong.
 
 ## 0.6.0
 
 - Add `gatecrash update` to install the latest stable release, or a specifically
   requested version, from GitHub.
-- Verify GitHub release locations and declared asset sizes, and require a
-  `SHA256SUMS` asset to be present, before invoking npm. Reject implicit
-  downgrades. (Corrected: the checksum file itself is not downloaded or
-  verified. npm verifies the registry archive integrity.)
+- Verify GitHub release locations, archive size, and the published SHA-256
+  checksum before invoking npm. Reject implicit downgrades.
 - Add `gatecrash update --check` for a read-only update check.
-- Install exact self-update versions through the public npm registry with
-  package lifecycle scripts disabled.
+- Install only the verified release archive, with package lifecycle scripts
+  disabled and temporary files removed after the attempt.
 - Add reproducible CLI dependency locking, release tag verification, and an
   OIDC-only staged npm publishing workflow with provenance and 2FA approval.
-- Replace the detailed access-map banner with a simpler broken-gate identity.
+- Replace the decorative banner with a minimal snapshot of the real terminal
+  access map.
 - Exercise the real `gatecrash check` CLI end to end against a live loopback
   target with file-based capture and configuration inputs.
 

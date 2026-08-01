@@ -60,11 +60,12 @@ changelog.
   `xzycd/gatecrash` GitHub repository. Drafts, prereleases, non-semantic tags,
   unexpected page URLs, and unexpected asset URLs are rejected.
 - A release must contain the npm archive name produced by `npm pack` and a
-  `SHA256SUMS` file. Asset locations and declared sizes are validated before an
-  update can proceed.
-- npm is invoked directly without a shell. It downloads an exact scoped package
-  version from the public npm registry with lifecycle scripts disabled and
-  verifies the registry archive integrity.
+  `SHA256SUMS` file. Both downloads are size-capped, and the archive checksum
+  must match before npm starts.
+- npm installs only the verified local archive, with lifecycle scripts disabled.
+  Temporary archives are private and removed after the install attempt. On
+  Windows, the required command interpreter receives only fixed arguments and a
+  validated, locally generated archive path.
 - `--check` performs no download or installation. Downgrades require a specific
   version and `--force`; a development build newer than GitHub's latest release
   is left unchanged.

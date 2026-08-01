@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/banner.svg" alt="Gatecrash, an authorization boundary mapper for captured web traffic" width="920">
+<img src="docs/banner.svg" alt="Gatecrash terminal access map comparing routes across three sessions" width="920">
 
 **Replay a captured request with the wrong session and see what still gets in.**
 
@@ -175,10 +175,11 @@ gatecrash update
 gatecrash update 0.6.0
 ```
 
-Gatecrash accepts only stable releases published under `xzycd/gatecrash`, then
-asks npm for that exact package version with install scripts disabled. npm
-checks the registry archive integrity, and published releases carry provenance
-back to the GitHub workflow. Installing an older release requires `--force`.
+Gatecrash accepts only release assets published under `xzycd/gatecrash`, then
+matches the downloaded npm archive against that release's `SHA256SUMS` before
+starting a global npm install with package scripts disabled. Temporary update
+files are removed after the attempt. Installing an older release requires
+`--force`.
 
 ## Capture formats
 

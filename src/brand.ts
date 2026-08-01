@@ -16,7 +16,7 @@ import {code, columns as terminalColumns, RAMP, RESET} from './ui/ink.js';
 export const COMMAND_NAME = 'gatecrash';
 export const TAGLINE = 'Same request. Wrong session.';
 export const DESCRIPTION =
-  'Replay captured web requests across sessions and map authorization boundaries.';
+  'Replay captured web requests across sessions and see which routes remain open to the wrong user.';
 export const COMPACT_MARK = '◆╾┫';
 
 const GLYPHS: Record<string, string[]> = {

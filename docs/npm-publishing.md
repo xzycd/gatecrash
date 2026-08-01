@@ -61,9 +61,10 @@ release tags.
    source through npm using a short-lived OIDC credential with provenance.
 5. Inspect the staged package on npmjs.com, then approve it with 2FA.
 6. Confirm the npm version installs correctly, then publish the draft GitHub
-   release. Only published GitHub releases are visible to `gatecrash update`.
+   release. Only published GitHub releases are visible to `gatecrash update`,
+   which verifies and installs the matching release archive.
 
 The package remains unavailable until that final human approval. The workflow
 has no npm token and its trusted identity cannot directly publish a live
-version. Keeping GitHub as a draft until npm is live also prevents the updater
-from selecting a version that the registry cannot install yet.
+version. Keeping GitHub as a draft until npm is live keeps the updater, the npm
+package, and the provenance record on one reviewed version.

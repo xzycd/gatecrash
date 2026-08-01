@@ -1,7 +1,14 @@
 import {spawn} from 'node:child_process';
+import {mkdtemp, rm, writeFile} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 import {COMMAND_NAME, COMPACT_MARK} from '../brand.js';
 import {GatecrashError} from '../core/errors.js';
-import {compareVersions, findRelease} from '../core/update.js';
+import {
+  compareVersions,
+  downloadVerifiedRelease,
+  findRelease,
+} from '../core/update.js';
 import {VERSION} from '../version.js';
 
 export interface UpdateCommandOptions {
@@ -9,42 +16,38 @@ export interface UpdateCommandOptions {
   force: boolean;
 }
 
-const INSTALL_VERSION = /^\d+\.\d+\.\d+$/;
+const INSTALL_ARCHIVE = /(?:^|[\\\\/])xzycd-gatecrash-(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.tgz$/;
+const UNSAFE_WINDOWS_PATH = /[\r\n"&|<>()^%!]/;
 
 /**
- * The exact command line, so a test can assert on it without spawning npm.
- *
- * Windows needs `cmd.exe` because Node refuses to run a `.cmd` file through
- * `spawn` without a shell, and has done since the fix for the argument-quoting
- * flaw in batch files. Reaching for `shell: true` is the usual way out of that
- * error and is exactly the wrong one: it would hand the whole argument list to
- * a command interpreter. The interpreter here receives only fixed strings and
- * a version that has already been re-checked against a strict pattern, so the
- * assertion below is what keeps it safe rather than a promise about callers.
+ * Build the exact npm command so the Windows shell boundary stays testable.
+ * Node cannot execute npm.cmd directly on current Windows releases. cmd.exe
+ * receives fixed arguments plus a locally generated archive path; shell
+ * metacharacters and unexpected archive names are rejected first.
  */
-export function installCommand(version: string, platform: string = process.platform): {
+export function installCommand(archivePath: string, platform: string = process.platform): {
   command: string;
   args: string[];
 } {
-  if (!INSTALL_VERSION.test(version)) {
-    throw new GatecrashError(`Refusing to install an unrecognised version: ${version}`);
+  if (!INSTALL_ARCHIVE.test(archivePath)) {
+    throw new GatecrashError('Refusing to install an unrecognised Gatecrash archive.');
   }
 
-  const args = [
-    'install',
-    '--global',
-    '--ignore-scripts',
-    '--registry=https://registry.npmjs.org/',
-    `@xzycd/gatecrash@${version}`,
-  ];
+  const args = ['install', '--global', '--ignore-scripts', archivePath];
   if (platform === 'win32') {
-    return {command: process.env.ComSpec ?? 'cmd.exe', args: ['/d', '/s', '/c', 'npm', ...args]};
+    if (UNSAFE_WINDOWS_PATH.test(archivePath)) {
+      throw new GatecrashError('Refusing to pass an unsafe archive path to npm on Windows.');
+    }
+    return {
+      command: process.env.ComSpec ?? 'cmd.exe',
+      args: ['/d', '/s', '/v:off', '/c', 'npm', ...args],
+    };
   }
   return {command: 'npm', args};
 }
 
-function installVersion(version: string): Promise<void> {
-  const {command, args} = installCommand(version);
+function installArchive(archivePath: string): Promise<void> {
+  const {command, args} = installCommand(archivePath);
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       shell: false,
@@ -120,11 +123,19 @@ export async function runUpdateCommand(
     heading,
     `current  ${VERSION}`,
     `target   ${release.version}`,
-    'source   GitHub release confirmed',
-    'install  downloading the exact version from npm',
+    'verify   downloading release checksums',
     '',
   ].join('\n'));
-  await installVersion(release.version);
+  const directory = await mkdtemp(join(tmpdir(), 'gatecrash-update-'));
+  try {
+    const archive = await downloadVerifiedRelease(release);
+    const archivePath = join(directory, release.archive.name);
+    await writeFile(archivePath, archive, {mode: 0o600, flag: 'wx'});
+    process.stdout.write('verify   SHA-256 matched\ninstall  running npm global install\n\n');
+    await installArchive(archivePath);
+  } finally {
+    await rm(directory, {recursive: true, force: true});
+  }
   process.stdout.write([
     '',
     `updated  ${VERSION} → ${release.version}`,

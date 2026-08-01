@@ -62,13 +62,13 @@ Every dependency has a direct equivalent: `net/http` for `fetch`,
    that survives the move. It would be replaced by GoReleaser, a per-platform
    build matrix, checksums, and signing — all of which is achievable and none of
    which exists yet.
-3. **`gatecrash update` gets harder to make safe, not easier.** It currently
-   uses the GitHub release only as a version oracle and then hands the install
-   to npm, which verifies registry archive integrity itself. The `SHA256SUMS`
-   asset is required to exist and never actually read, because npm is doing that
-   job. In Go there is no npm, so the updater has to download the binary and
-   verify the checksum and signature itself. That is new, hand-written,
-   security-critical code in the most sensitive component in the project.
+3. **`gatecrash update` does not get simpler in Go.** It already downloads the
+   release archive through a bounded reader and matches it against
+   `SHA256SUMS` before npm installs that exact local file. A Go build could
+   reuse the same trust boundary, but it would also need per-platform asset
+   selection and an authenticity story stronger than a checksum published
+   beside the binary. The bounded download and digest code now exists; the
+   multi-platform distribution and signing work does not.
 
 ## The experiment to run first
 

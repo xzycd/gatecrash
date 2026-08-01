@@ -1,6 +1,8 @@
+import {createHash} from 'node:crypto';
 import {describe, expect, it} from 'vitest';
 import {
   compareVersions,
+  downloadVerifiedRelease,
   findRelease,
   normalizeVersion,
   type ReleaseFetcher,
@@ -66,5 +68,46 @@ describe('GitHub updater', () => {
       ],
     })));
     await expect(findRelease(undefined, oversizedArchive)).rejects.toThrowError(/unexpectedly large/);
+  });
+
+  it('verifies the release archive before returning it', async () => {
+    const archive = new TextEncoder().encode('archive');
+    const checksum = createHash('sha256').update(archive).digest('hex');
+    const releaseFetcher: ReleaseFetcher = async () => new Response(JSON.stringify(releaseJson()));
+    const release = await findRelease(undefined, releaseFetcher);
+    const assetFetcher: ReleaseFetcher = async (input) => {
+      if (String(input) === checksumsUrl) {
+        return new Response(`${checksum}  ${archiveName}\n`);
+      }
+      if (String(input) === archiveUrl) {
+        return new Response(archive);
+      }
+      return new Response(null, {status: 404});
+    };
+    await expect(downloadVerifiedRelease(release, assetFetcher)).resolves.toEqual(archive);
+
+    const tamperedFetcher: ReleaseFetcher = async (input) => String(input) === checksumsUrl
+      ? new Response(`${'0'.repeat(64)}  ${archiveName}\n`)
+      : new Response(archive);
+    await expect(downloadVerifiedRelease(release, tamperedFetcher)).rejects.toThrowError(
+      /failed SHA-256 verification/,
+    );
+
+    let requests = 0;
+    const countingFetcher: ReleaseFetcher = async () => {
+      requests += 1;
+      return new Response(archive);
+    };
+    const changedRelease = {
+      ...release,
+      archive: {
+        ...release.archive,
+        browser_download_url: 'https://example.test/gatecrash.tgz',
+      },
+    };
+    await expect(downloadVerifiedRelease(changedRelease, countingFetcher)).rejects.toThrowError(
+      /trusted Gatecrash release/,
+    );
+    expect(requests).toBe(0);
   });
 });

@@ -1,7 +1,7 @@
 {
   "name": "@xzycd/gatecrash",
   "version": "0.6.0",
-  "description": "Replay the same web request across sessions to map authorization boundaries.",
+  "description": "Replay captured web requests across sessions and see which routes remain open to the wrong user.",
   "type": "module",
   "bin": {
     "gatecrash": "dist/cli.js"

