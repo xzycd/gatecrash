@@ -44,6 +44,20 @@ Saved files are replaced atomically and use mode `0600` where supported. Schema
 changes increment `schemaVersion` and include a compatibility note in the
 changelog.
 
+## Self-update rules
+
+- `gatecrash update` reads stable releases only from the public
+  `xzycd/gatecrash` GitHub repository. Drafts, prereleases, non-semantic tags,
+  unexpected page URLs, and unexpected asset URLs are rejected.
+- A release must contain the npm archive name produced by `npm pack` and a
+  `SHA256SUMS` file. Both downloads are size-capped, and the archive checksum
+  must match before npm starts.
+- npm is invoked directly without a shell. Temporary archives are private and
+  removed after the install attempt.
+- `--check` performs no download or installation. Downgrades require a specific
+  version and `--force`; a development build newer than GitHub's latest release
+  is left unchanged.
+
 ## Terminal behavior
 
 The live UI is inline. Do not use the alternate screen or issue a clear-screen

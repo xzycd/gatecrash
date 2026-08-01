@@ -18,6 +18,7 @@ import {runDemoCommand, type DemoCommandOptions} from './commands/demo.js';
 import {runExplainCommand, type ExplainCommandOptions} from './commands/explain.js';
 import {runInitCommand, type InitCommandOptions} from './commands/init.js';
 import {runInspectCommand, type InspectCommandOptions} from './commands/inspect.js';
+import {runUpdateCommand, type UpdateCommandOptions} from './commands/update.js';
 import {GatecrashError} from './core/errors.js';
 import {plainError, plainWelcome} from './ui/plain.js';
 import {showErrorInterface, showWelcomeInterface} from './ui/run.js';
@@ -110,6 +111,16 @@ async function main(): Promise<void> {
     .option('--plain', 'disable styled terminal output', false)
     .action(async (id: string, options: ExplainCommandOptions) => {
       await runExplainCommand(id, options);
+    });
+
+  program
+    .command('update')
+    .description('install a verified Gatecrash release from GitHub')
+    .argument('[version]', 'specific stable version; defaults to latest')
+    .option('--check', 'show the available version without installing', false)
+    .option('--force', 'allow reinstalling or installing an older version', false)
+    .action(async (version: string | undefined, options: UpdateCommandOptions) => {
+      await runUpdateCommand(version, options);
     });
 
   await program.parseAsync(process.argv);

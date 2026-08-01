@@ -21,6 +21,21 @@ responses become review leads.
 Gatecrash does not declare vulnerabilities. HTTP similarity cannot tell you the
 application's intended policy, so the final judgment stays with the tester.
 
+## Install locally
+
+From a Gatecrash checkout:
+
+```bash
+npm ci
+npm run check
+npm install --global .
+gatecrash --version
+```
+
+The global install is only needed to use `gatecrash` outside this checkout.
+During development, `npm run dev -- --help` runs the same CLI directly from the
+source tree.
+
 ## Try the local lab
 
 ```bash
@@ -120,6 +135,30 @@ Open the evidence for one result:
 ```bash
 gatecrash explain GTC-7A1F0B
 ```
+
+These commands are not simulated: `check` loads the capture and configuration,
+sends the in-scope requests to the exact configured origin with each profile,
+and compares the responses it receives. Use it only on a system you own or have
+permission to test.
+
+## Update from GitHub
+
+Check the latest stable GitHub release without changing the installation:
+
+```bash
+gatecrash update --check
+```
+
+Install it, or select a particular stable release:
+
+```bash
+gatecrash update
+gatecrash update 0.6.0
+```
+
+Gatecrash accepts only release assets published under `xzycd/gatecrash`, then
+matches the downloaded npm archive against that release's `SHA256SUMS` before
+starting a global npm install. Installing an older release requires `--force`.
 
 ## Capture formats
 

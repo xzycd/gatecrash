@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.0
+
+- Add `gatecrash update` to install the latest stable release, or a specifically
+  requested version, from GitHub.
+- Verify GitHub release locations, archive size, and the published SHA-256
+  checksum before invoking npm. Reject implicit downgrades.
+- Add `gatecrash update --check` for a read-only update check.
+- Exercise the real `gatecrash check` CLI end to end against a live loopback
+  target with file-based capture and configuration inputs.
+
 ## 0.5.0
 
 - Rename the project and command from Guestlist to Gatecrash.
