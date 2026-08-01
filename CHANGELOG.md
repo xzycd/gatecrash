@@ -7,6 +7,11 @@
 - Verify GitHub release locations, archive size, and the published SHA-256
   checksum before invoking npm. Reject implicit downgrades.
 - Add `gatecrash update --check` for a read-only update check.
+- Install exact self-update versions through the public npm registry with
+  package lifecycle scripts disabled.
+- Add reproducible CLI dependency locking, release tag verification, and an
+  OIDC-only staged npm publishing workflow with provenance and 2FA approval.
+- Replace the detailed access-map banner with a simpler broken-gate identity.
 - Exercise the real `gatecrash check` CLI end to end against a live loopback
   target with file-based capture and configuration inputs.
 

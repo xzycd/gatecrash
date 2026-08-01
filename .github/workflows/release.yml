@@ -4,26 +4,48 @@ on:
   push:
     tags: ['v*']
 
-permissions:
-  contents: write
+permissions: {}
 
 jobs:
-  release:
+  github-release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 26
-          cache: npm
-      - run: npm ci
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts
+      - run: npm run release:verify -- "$GITHUB_REF_NAME"
       - run: npm run check
       - run: mkdir release
       - run: npm pack --pack-destination release
       - run: cd release && sha256sum *.tgz > SHA256SUMS
       - uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3
         with:
+          draft: true
           generate_release_notes: true
           files: |
             release/*.tgz
             release/SHA256SUMS
+
+  npm-stage:
+    needs: github-release
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 26
+          registry-url: https://registry.npmjs.org/
+          package-manager-cache: false
+      - run: npm install --global --ignore-scripts npm@11.18.0
+      - run: npm ci --ignore-scripts
+      - run: npm run release:verify -- "$GITHUB_REF_NAME"
+      - run: npm stage publish --access public --provenance

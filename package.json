@@ -1,7 +1,7 @@
 {
   "name": "@xzycd/gatecrash",
   "version": "0.6.0",
-  "description": "Replay captured web requests across sessions and map authorization boundaries.",
+  "description": "Replay the same web request across sessions to map authorization boundaries.",
   "type": "module",
   "bin": {
     "gatecrash": "dist/cli.js"
@@ -9,6 +9,7 @@
   "files": [
     "dist",
     "docs",
+    "npm-shrinkwrap.json",
     "CHANGELOG.md",
     "LICENSE",
     "README.md",
@@ -21,6 +22,8 @@
     "dev": "tsx src/cli.tsx",
     "lint": "eslint .",
     "prepare": "npm run build",
+    "prepublishOnly": "npm run check && npm run release:verify",
+    "release:verify": "node scripts/verify-release.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
@@ -31,6 +34,11 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/xzycd/gatecrash.git"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "registry": "https://registry.npmjs.org/"
   },
   "bugs": {
     "url": "https://github.com/xzycd/gatecrash/issues"

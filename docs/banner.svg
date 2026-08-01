@@ -1,66 +1,36 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="400" viewBox="0 0 1200 400" role="img" aria-labelledby="title description">
-  <title id="title">Gatecrash authorization boundary mapper</title>
-  <description id="description">Gatecrash broken-gate mark beside an access map comparing Alice, Bob, and an anonymous session.</description>
-  <rect width="1200" height="400" rx="24" fill="#0B0D0C"/>
-  <rect x="1" y="1" width="1198" height="398" rx="23" fill="none" stroke="#343A43"/>
-  <rect x="1188" width="12" height="400" rx="0 24 24 0" fill="#C9FF43"/>
+  <title id="title">Gatecrash</title>
+  <description id="description">A bright request passes through a split gate beside the words Gatecrash and Same request. Wrong session.</description>
 
-  <g transform="translate(58 50)" fill="none" stroke-linecap="square" stroke-linejoin="miter">
-    <path d="M38 2H2V90H38" stroke="#F4F1E9" stroke-width="6"/>
-    <path d="M82 2H118V90H82" stroke="#F4F1E9" stroke-width="6"/>
-    <path d="M43 14V34L58 44M43 78V58L58 48" stroke="#9CA2AB" stroke-width="4"/>
-    <path d="M77 14V34L62 44M77 78V58L62 48" stroke="#9CA2AB" stroke-width="4"/>
-    <path d="M60 34L72 46L60 58L48 46Z" fill="#C9FF43" stroke="#C9FF43" stroke-width="2"/>
+  <rect width="1200" height="400" fill="#0B0D0C"/>
+  <path d="M0 3H1200" stroke="#C9FF43" stroke-width="6"/>
+
+  <g fill="none" stroke-linecap="square" stroke-linejoin="miter">
+    <path d="M242 82H184V318H242" stroke="#F4F1E9" stroke-width="10"/>
+    <path d="M398 82H456V318H398" stroke="#F4F1E9" stroke-width="10"/>
+
+    <path d="M258 110V164L304 191M258 290V236L304 209" stroke="#5C636D" stroke-width="8"/>
+    <path d="M382 110V164L336 191M382 290V236L336 209" stroke="#5C636D" stroke-width="8"/>
+
+    <path d="M62 200H297" stroke="#343A43" stroke-width="3"/>
+    <path d="M343 200H496" stroke="#C9FF43" stroke-width="3"/>
+    <path d="M320 174L346 200L320 226L294 200Z" fill="#C9FF43" stroke="#C9FF43" stroke-width="3"/>
   </g>
 
-  <g font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace">
-    <text x="58" y="182" fill="#C9FF43" font-size="12" font-weight="700" letter-spacing="2.6">AUTHORIZATION BOUNDARY MAPPER / V0.5</text>
-    <text x="54" y="250" fill="#F4F1E9" font-size="68" font-weight="700" letter-spacing="-3">gatecrash</text>
-    <text x="58" y="288" fill="#9CA2AB" font-size="18">same request. wrong session.</text>
-    <path d="M58 323H485" stroke="#343A43"/>
-    <text x="58" y="350" fill="#5C636D" font-size="11" letter-spacing="1.2">HAR  /  URLS  /  CRAWLER JSONL</text>
+  <path d="M528 76V324" stroke="#20252A" stroke-width="2"/>
 
-    <g transform="translate(565 46)">
-      <text x="0" y="13" fill="#F4F1E9" font-size="12" font-weight="700" letter-spacing="1.8">ACCESS MAP</text>
-      <text x="528" y="13" text-anchor="end" fill="#5C636D" font-size="10">3 ROUTES / 3 SESSIONS</text>
-      <path d="M0 30H540" stroke="#343A43"/>
+  <g font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+    <text x="574" y="121" fill="#C9FF43" font-size="13" font-weight="700" letter-spacing="3.2">AUTHORIZATION BOUNDARY MAPPER</text>
+    <text x="568" y="221" fill="#F4F1E9" font-size="88" font-weight="750" letter-spacing="-4">gatecrash</text>
+    <text x="574" y="270" fill="#9CA2AB" font-size="24" font-weight="450" letter-spacing="-0.3">Same request. Wrong session.</text>
+  </g>
 
-      <text x="0" y="57" fill="#5C636D" font-size="10">REQUEST</text>
-      <text x="320" y="57" fill="#83A92F" font-size="10">ALICE/BASE</text>
-      <text x="410" y="57" fill="#5C636D" font-size="10">BOB</text>
-      <text x="475" y="57" fill="#5C636D" font-size="10">ANON</text>
-
-      <g font-size="12">
-        <text x="0" y="96" fill="#FF665E">! GET /api/account/alice</text>
-        <text x="322" y="96" fill="#C9FF43">200 ●</text>
-        <text x="410" y="96" fill="#FF665E">200 !</text>
-        <text x="475" y="96" fill="#9CA2AB">401 ×</text>
-        <path d="M0 112H540" stroke="#20252A"/>
-
-        <text x="0" y="143" fill="#FF665E">! GET /api/member/export</text>
-        <text x="322" y="143" fill="#C9FF43">200 ●</text>
-        <text x="410" y="143" fill="#78A8FF">200 ≠</text>
-        <text x="475" y="143" fill="#FF665E">200 !</text>
-        <path d="M0 159H540" stroke="#20252A"/>
-
-        <text x="0" y="190" fill="#F4F1E9">  GET /api/me</text>
-        <text x="322" y="190" fill="#C9FF43">200 ●</text>
-        <text x="410" y="190" fill="#78A8FF">200 ≠</text>
-        <text x="475" y="190" fill="#9CA2AB">401 ×</text>
-      </g>
-
-      <path d="M0 218H540" stroke="#343A43"/>
-      <rect x="0" y="240" width="9" height="9" fill="#FF665E"/>
-      <text x="22" y="249" fill="#FF665E" font-size="11" font-weight="700">2 NEED REVIEW</text>
-      <text x="0" y="281" fill="#F4F1E9" font-size="11">GTC-7A1F0B</text>
-      <text x="108" y="281" fill="#5C636D" font-size="11">alice 200</text>
-      <path d="M190 277H262" stroke="#343A43"/>
-      <circle cx="262" cy="277" r="3" fill="#FF665E"/>
-      <text x="276" y="281" fill="#FF665E" font-size="11">bob 200 / exact</text>
-      <text x="0" y="318" fill="#83A92F" font-size="10">● BASELINE</text>
-      <text x="105" y="318" fill="#FF665E" font-size="10">! REVIEW</text>
-      <text x="200" y="318" fill="#9CA2AB" font-size="10">× BLOCKED</text>
-      <text x="300" y="318" fill="#78A8FF" font-size="10">≠ CHANGED</text>
-    </g>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="11" font-weight="700" letter-spacing="1.4">
+    <circle cx="580" cy="315" r="4" fill="#C9FF43"/>
+    <text x="596" y="319" fill="#5C636D">HAR</text>
+    <circle cx="652" cy="315" r="4" fill="#C9FF43"/>
+    <text x="668" y="319" fill="#5C636D">URLS</text>
+    <circle cx="737" cy="315" r="4" fill="#C9FF43"/>
+    <text x="753" y="319" fill="#5C636D">JSONL</text>
   </g>
 </svg>

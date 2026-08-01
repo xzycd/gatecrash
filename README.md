@@ -21,7 +21,21 @@ responses become review leads.
 Gatecrash does not declare vulnerabilities. HTTP similarity cannot tell you the
 application's intended policy, so the final judgment stays with the tester.
 
-## Install locally
+## Install
+
+From npm:
+
+```bash
+npm install --global @xzycd/gatecrash
+gatecrash --version
+```
+
+For a stricter install that disables all package lifecycle scripts and pins the
+exact release:
+
+```bash
+npm install --global --ignore-scripts @xzycd/gatecrash@0.6.0
+```
 
 From a Gatecrash checkout:
 
@@ -39,7 +53,7 @@ source tree.
 ## Try the local lab
 
 ```bash
-npm install -g github:xzycd/gatecrash
+npm install --global @xzycd/gatecrash
 gatecrash demo
 ```
 
@@ -156,9 +170,10 @@ gatecrash update
 gatecrash update 0.6.0
 ```
 
-Gatecrash accepts only release assets published under `xzycd/gatecrash`, then
-matches the downloaded npm archive against that release's `SHA256SUMS` before
-starting a global npm install. Installing an older release requires `--force`.
+Gatecrash accepts only stable releases published under `xzycd/gatecrash`, then
+asks npm for that exact package version with install scripts disabled. npm
+checks the registry archive integrity, and published releases carry provenance
+back to the GitHub workflow. Installing an older release requires `--force`.
 
 ## Capture formats
 

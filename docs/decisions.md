@@ -50,13 +50,29 @@ changelog.
   `xzycd/gatecrash` GitHub repository. Drafts, prereleases, non-semantic tags,
   unexpected page URLs, and unexpected asset URLs are rejected.
 - A release must contain the npm archive name produced by `npm pack` and a
-  `SHA256SUMS` file. Both downloads are size-capped, and the archive checksum
-  must match before npm starts.
-- npm is invoked directly without a shell. Temporary archives are private and
-  removed after the install attempt.
+  `SHA256SUMS` file. Asset locations and declared sizes are validated before an
+  update can proceed.
+- npm is invoked directly without a shell. It downloads an exact scoped package
+  version from the public npm registry with lifecycle scripts disabled and
+  verifies the registry archive integrity.
 - `--check` performs no download or installation. Downgrades require a specific
   version and `--force`; a development build newer than GitHub's latest release
   is left unchanged.
+
+## npm publishing rules
+
+- `@xzycd/gatecrash` is a public scoped package. Release tags must exactly match
+  the package and source versions before packaging starts.
+- Published CLI dependencies use `npm-shrinkwrap.json` so global installations
+  resolve the reviewed dependency graph.
+- Normal npm releases use GitHub Actions trusted publishing with OIDC and
+  provenance. The workflow receives no long-lived npm token.
+- The trusted publisher may stage a package but cannot make it public. A
+  maintainer reviews and approves each staged release with 2FA.
+- GitHub releases remain drafts until the matching npm version is public, so
+  the updater never advertises a version that npm cannot install.
+- Release jobs do not share npm's OIDC permission with the third-party GitHub
+  release action.
 
 ## Terminal behavior
 

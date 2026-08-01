@@ -1,14 +1,7 @@
 import {spawn} from 'node:child_process';
-import {mkdtemp, rm, writeFile} from 'node:fs/promises';
-import {tmpdir} from 'node:os';
-import {join} from 'node:path';
 import {COMMAND_NAME, COMPACT_MARK} from '../brand.js';
 import {GatecrashError} from '../core/errors.js';
-import {
-  compareVersions,
-  downloadVerifiedRelease,
-  findRelease,
-} from '../core/update.js';
+import {compareVersions, findRelease} from '../core/update.js';
 import {VERSION} from '../version.js';
 
 export interface UpdateCommandOptions {
@@ -16,10 +9,17 @@ export interface UpdateCommandOptions {
   force: boolean;
 }
 
-function installArchive(path: string): Promise<void> {
+function installVersion(version: string): Promise<void> {
   const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  const packageSpec = `@xzycd/gatecrash@${version}`;
   return new Promise((resolve, reject) => {
-    const child = spawn(npm, ['install', '--global', path], {
+    const child = spawn(npm, [
+      'install',
+      '--global',
+      '--ignore-scripts',
+      '--registry=https://registry.npmjs.org/',
+      packageSpec,
+    ], {
       shell: false,
       stdio: 'inherit',
     });
@@ -93,19 +93,11 @@ export async function runUpdateCommand(
     heading,
     `current  ${VERSION}`,
     `target   ${release.version}`,
-    'verify   downloading release checksums',
+    'source   GitHub release confirmed',
+    'install  downloading the exact version from npm',
     '',
   ].join('\n'));
-  const directory = await mkdtemp(join(tmpdir(), 'gatecrash-update-'));
-  try {
-    const archive = await downloadVerifiedRelease(release);
-    const archivePath = join(directory, release.archive.name);
-    await writeFile(archivePath, archive, {mode: 0o600, flag: 'wx'});
-    process.stdout.write('verify   SHA-256 matched\ninstall  running npm global install\n\n');
-    await installArchive(archivePath);
-  } finally {
-    await rm(directory, {recursive: true, force: true});
-  }
+  await installVersion(release.version);
   process.stdout.write([
     '',
     `updated  ${VERSION} → ${release.version}`,
