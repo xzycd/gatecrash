@@ -9,17 +9,44 @@ export interface UpdateCommandOptions {
   force: boolean;
 }
 
+const INSTALL_VERSION = /^\d+\.\d+\.\d+$/;
+
+/**
+ * The exact command line, so a test can assert on it without spawning npm.
+ *
+ * Windows needs `cmd.exe` because Node refuses to run a `.cmd` file through
+ * `spawn` without a shell, and has done since the fix for the argument-quoting
+ * flaw in batch files. Reaching for `shell: true` is the usual way out of that
+ * error and is exactly the wrong one: it would hand the whole argument list to
+ * a command interpreter. The interpreter here receives only fixed strings and
+ * a version that has already been re-checked against a strict pattern, so the
+ * assertion below is what keeps it safe rather than a promise about callers.
+ */
+export function installCommand(version: string, platform: string = process.platform): {
+  command: string;
+  args: string[];
+} {
+  if (!INSTALL_VERSION.test(version)) {
+    throw new GatecrashError(`Refusing to install an unrecognised version: ${version}`);
+  }
+
+  const args = [
+    'install',
+    '--global',
+    '--ignore-scripts',
+    '--registry=https://registry.npmjs.org/',
+    `@xzycd/gatecrash@${version}`,
+  ];
+  if (platform === 'win32') {
+    return {command: process.env.ComSpec ?? 'cmd.exe', args: ['/d', '/s', '/c', 'npm', ...args]};
+  }
+  return {command: 'npm', args};
+}
+
 function installVersion(version: string): Promise<void> {
-  const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  const packageSpec = `@xzycd/gatecrash@${version}`;
+  const {command, args} = installCommand(version);
   return new Promise((resolve, reject) => {
-    const child = spawn(npm, [
-      'install',
-      '--global',
-      '--ignore-scripts',
-      '--registry=https://registry.npmjs.org/',
-      packageSpec,
-    ], {
+    const child = spawn(command, args, {
       shell: false,
       stdio: 'inherit',
     });

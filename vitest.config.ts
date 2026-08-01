@@ -3,11 +3,11 @@ import {defineConfig} from 'vitest/config';
 export default defineConfig({
   test: {
     coverage: {
-      exclude: ['src/cli.tsx', 'src/ui/**'],
+      exclude: ['src/cli.ts'],
       reporter: ['text', 'json-summary'],
     },
     environment: 'node',
-    include: ['test/**/*.test.ts', 'test/**/*.test.tsx'],
+    include: ['test/**/*.test.ts'],
     restoreMocks: true,
   },
 });

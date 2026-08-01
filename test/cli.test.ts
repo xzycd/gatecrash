@@ -9,7 +9,7 @@ import {describe, expect, it} from 'vitest';
 
 const exec = promisify(execFile);
 const root = resolve(import.meta.dirname, '..');
-const cli = resolve(root, 'src/cli.tsx');
+const cli = resolve(root, 'src/cli.ts');
 
 async function run(
   arguments_: string[],
@@ -24,7 +24,9 @@ async function run(
 describe('CLI', () => {
   it('turns an empty invocation into a useful first step', async () => {
     const {stdout} = await run([]);
-    expect(stdout).toContain('gatecrash  Same request. Wrong session.');
+    // The block mark is the wordmark, so the word itself is not in the text.
+    expect(stdout).toContain('█');
+    expect(stdout).toContain('Same request. Wrong session.');
     expect(stdout).toContain('gatecrash demo');
     expect(stdout).toContain('gatecrash inspect capture.har');
   });

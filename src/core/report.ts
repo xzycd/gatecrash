@@ -1,20 +1,28 @@
 import {readdir} from 'node:fs/promises';
 import {extname, join, resolve} from 'node:path';
 import {hasErrorCode, readLimitedUtf8File, writePrivateFile} from '../utils/files.js';
+import {terminalText} from '../utils/security.js';
 import {GatecrashError} from './errors.js';
 import type {Finding, GatecrashReport} from './types.js';
 
 const REPORT_MAXIMUM_BYTES = 25_000_000;
 const SUPPORTED_SCHEMAS = new Set([1, 2]);
 
+// A Markdown report is a file that gets pasted into a pull request or a
+// ticket, so the renderer on the far end is somebody else's. Paths come from a
+// capture, which means an attacker who can shape a URL can shape this text.
+// Escaping `<` and `>` stopped the HTML; `[](…)` was left open, so a path
+// could still arrive at a reviewer as a working link pointing anywhere.
+// Characters that only matter at the start of a line (`#`, `-`, `+`, `.`) are
+// left alone: newlines are stripped first, so an escaped value is always
+// mid-line and escaping them here would just fill every path with backslashes.
+const MARKDOWN_SPECIALS = /[&<>\\`*_{}[\]()|~!]/g;
+const MARKDOWN_ENTITIES: Record<string, string> = {'&': '&amp;', '<': '&lt;', '>': '&gt;'};
+
 function markdownEscape(value: string): string {
-  return value
-    .replaceAll('\\', '\\\\')
-    .replaceAll('|', '\\|')
-    .replaceAll('`', "'")
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll(/\r?\n/g, ' ');
+  return terminalText(value)
+    .replaceAll(/\r?\n/g, ' ')
+    .replaceAll(MARKDOWN_SPECIALS, (character) => MARKDOWN_ENTITIES[character] ?? `\\${character}`);
 }
 
 function percent(value: number): string {

@@ -12,6 +12,61 @@ interface FingerprintInput {
   volatileJsonKeys: string[];
 }
 
+// Everything below this line is walking a document that a target server chose
+// the shape of. None of these bounds change what a well-behaved response
+// compares to; they exist so that a response built to be hostile costs a
+// bounded amount of stack, heap, and time.
+//
+// Both sides of a comparison are fingerprinted by the same code with the same
+// limits, so a truncated fingerprint still compares deterministically against
+// another truncated fingerprint. A limit changes the score, never the verdict
+// procedure.
+
+// Deeper than any API response and shallower than the call stack. A JSON
+// subtree past this depth is folded to one marker rather than walked, because
+// rebuilding the value is naturally recursive and a cap is the cheapest way to
+// bound it.
+const MAXIMUM_JSON_DEPTH = 128;
+// HTML gets a far looser bound because its walk carries an explicit stack and
+// does not need protecting from itself. Real pages reach forty or fifty levels
+// and a framework can go further, so anything tight here would quietly change
+// what a legitimate comparison sees.
+const MAXIMUM_HTML_DEPTH = 4_096;
+// parse5 builds a tree in time quadratic in nesting depth, and depth can never
+// exceed the number of tags, so counting `<` bounds the work before any of it
+// starts. Measured on the default 1 MB response budget: a 500 KB page nested
+// sixty deep parses in 15 ms, while 195 KB of nested `<div>` takes 4.6 s and
+// 300 KB takes ten. That is a target choosing how long the tool spends on it,
+// once per profile, for every route.
+//
+// The count is of `<` rather than of elements on purpose. Anything smarter has
+// to model which end tags HTML lets you leave out, and every tag left out of
+// the model becomes the tag an attacker nests with instead. Counting the
+// character over-counts on comments and stray text, which only ever means
+// falling back sooner.
+const MAXIMUM_HTML_TAGS = 20_000;
+// A structure set is a fingerprint, not an index. Past this it has stopped
+// discriminating between responses and started being a memory bill.
+const MAXIMUM_STRUCTURE_ENTRIES = 20_000;
+const MAXIMUM_TOKENS = 20_000;
+const DEEP_MARKER = '<deep>';
+
+function boundedAdd(target: Set<string>, value: string, limit: number): void {
+  if (target.size < limit) {
+    target.add(value);
+  }
+}
+
+function countTagOpenings(value: string, limit = MAXIMUM_HTML_TAGS): number {
+  let count = 0;
+  let index = value.indexOf('<');
+  while (index !== -1 && count <= limit) {
+    count += 1;
+    index = value.indexOf('<', index + 1);
+  }
+  return count;
+}
+
 function bodyKind(contentType: string, text: string, byteLength: number): BodyKind {
   if (byteLength === 0) {
     return 'empty';
@@ -28,7 +83,10 @@ function bodyKind(contentType: string, text: string, byteLength: number): BodyKi
   }
 
   if (normalizedType.includes('html') || /<html|<!doctype html/i.test(text)) {
-    return 'html';
+    // A document too tangled to parse cheaply is still compared, just on its
+    // visible text rather than its tag structure. Both sides of a comparison
+    // fall back on the same rule, so the verdict stays deterministic.
+    return countTagOpenings(text) > MAXIMUM_HTML_TAGS ? 'text' : 'html';
   }
 
   if (
@@ -47,8 +105,15 @@ function tokenize(value: string): Set<string> {
   const words = value
     .toLowerCase()
     .replaceAll(/https?:\/\/[^\s"'<>]+/g, '<url>')
-    .match(/[\p{L}\p{N}_@.-]{2,}/gu);
-  return new Set(words ?? []);
+    .matchAll(/[\p{L}\p{N}_@.-]{2,}/gu);
+  const tokens = new Set<string>();
+  for (const [word] of words) {
+    if (tokens.size >= MAXIMUM_TOKENS) {
+      break;
+    }
+    tokens.add(word);
+  }
+  return tokens;
 }
 
 function normalizeText(value: string): string {
@@ -57,29 +122,47 @@ function normalizeText(value: string): string {
 
 type HtmlNode = DefaultTreeAdapterMap['node'];
 
+// parse5 builds its tree iteratively, so it will happily hand back a document
+// nested a hundred thousand elements deep. Walking that with a recursive
+// visitor overflows the stack and takes the whole run down with it, which is a
+// crash any target can trigger with `'<div>' * 200000`. The walk carries its
+// own stack instead.
 function htmlSignals(value: string): {text: string; tags: Set<string>} {
   const document = parse(value);
   const text: string[] = [];
   const tags = new Set<string>();
   const hiddenTags = new Set(['script', 'style', 'svg', 'template']);
+  const pending: Array<{node: HtmlNode; hidden: boolean; depth: number}> = [
+    {node: document, hidden: false, depth: 0},
+  ];
 
-  const visit = (node: HtmlNode, hidden: boolean): void => {
-    const tagName = 'tagName' in node ? node.tagName.toLowerCase() : undefined;
-    const nextHidden = hidden || tagName !== undefined && hiddenTags.has(tagName);
-    if (tagName !== undefined) {
-      tags.add(tagName);
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (current === undefined) {
+      break;
     }
-    if (node.nodeName === '#text' && 'value' in node && !nextHidden) {
+
+    const {node, depth} = current;
+    const tagName = 'tagName' in node ? node.tagName.toLowerCase() : undefined;
+    const hidden = current.hidden || tagName !== undefined && hiddenTags.has(tagName);
+    if (tagName !== undefined) {
+      boundedAdd(tags, tagName, MAXIMUM_STRUCTURE_ENTRIES);
+    }
+    if (node.nodeName === '#text' && 'value' in node && !hidden && text.length < MAXIMUM_TOKENS) {
       text.push(node.value);
     }
-    if ('childNodes' in node) {
-      for (const child of node.childNodes) {
-        visit(child, nextHidden);
+    if (depth < MAXIMUM_HTML_DEPTH && 'childNodes' in node) {
+      // Reversed so the explicit stack still visits siblings left to right,
+      // which is what keeps the extracted text in document order.
+      for (let index = node.childNodes.length - 1; index >= 0; index -= 1) {
+        const child = node.childNodes[index];
+        if (child !== undefined) {
+          pending.push({node: child, hidden, depth: depth + 1});
+        }
       }
     }
-  };
+  }
 
-  visit(document, false);
   return {text: normalizeText(text.join(' ')), tags};
 }
 
@@ -99,11 +182,21 @@ function normalizeJson(
 ): {normalized: string; structure: Set<string>; tokens: Set<string>} {
   const structure = new Set<string>();
 
-  const clean = (item: unknown, path: string): unknown => {
-    structure.add(`${path || '/'}:${scalarType(item)}`);
+  const clean = (item: unknown, path: string, depth: number): unknown => {
+    boundedAdd(structure, `${path || '/'}:${scalarType(item)}`, MAXIMUM_STRUCTURE_ENTRIES);
+
+    // A response can nest as deep as it likes, and rebuilding it is recursive.
+    // Past the limit the subtree collapses to one marker, identically on both
+    // sides of a comparison, so the run survives a document written to
+    // overflow the stack. Without this, `'[' * 200000` from a target is a
+    // crash rather than a fingerprint.
+    if (depth >= MAXIMUM_JSON_DEPTH) {
+      boundedAdd(structure, `${path || '/'}:deep`, MAXIMUM_STRUCTURE_ENTRIES);
+      return DEEP_MARKER;
+    }
 
     if (Array.isArray(item)) {
-      return item.map((child) => clean(child, `${path}[]`));
+      return item.map((child) => clean(child, `${path}[]`, depth + 1));
     }
 
     if (typeof item === 'object' && item !== null) {
@@ -111,10 +204,10 @@ function normalizeJson(
       for (const [key, child] of Object.entries(item).sort(([left], [right]) => left.localeCompare(right))) {
         const nextPath = `${path}/${key}`;
         if (volatileKeys.has(key.toLowerCase())) {
-          structure.add(`${nextPath}:volatile`);
+          boundedAdd(structure, `${nextPath}:volatile`, MAXIMUM_STRUCTURE_ENTRIES);
           result[key] = '<volatile>';
         } else {
-          result[key] = clean(child, nextPath);
+          result[key] = clean(child, nextPath, depth + 1);
         }
       }
       return result;
@@ -123,7 +216,7 @@ function normalizeJson(
     return item;
   };
 
-  const normalized = JSON.stringify(clean(value, ''));
+  const normalized = JSON.stringify(clean(value, '', 0));
   return {normalized, structure, tokens: tokenize(normalized)};
 }
 
