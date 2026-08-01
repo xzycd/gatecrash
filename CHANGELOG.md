@@ -1,11 +1,72 @@
 # Changelog
 
+## Unreleased
+
+### Terminal
+
+- Rebuild every view on a string renderer with explicit column arithmetic.
+  Terminal and plain output are now one code path with the escapes left out,
+  rather than two layouts that drift apart.
+- Drop `react` and `ink`. Runtime dependencies go from five to three, and
+  `node_modules` from 155 packages to 111.
+- Add a five-row block wordmark with a left-to-right reveal, at the largest of
+  four sizes that fits, and a plain line below forty columns.
+- Add a severity rail, similarity gauges, evidence branches, and a single box
+  reserved for the byte-identical match.
+- Degrade colour (24-bit, 256, none), box drawing (Unicode, ASCII), and
+  hyperlinks independently, so a terminal missing one still gets the others.
+- Move progress to a single self-erasing line on stderr, drawn on a timer rather
+  than from inside the work loop, so a run blocked on a slow route no longer
+  looks like a run that died. `--format json` and `--format markdown` never see
+  it.
+- Give every outcome a mark distinct from every other mark in both glyph sets.
+  `blocked` is now `✓`, because a door that held is good news.
+- Hold every view inside the width it was given, at every width.
+
+### Security
+
+- Bound response fingerprinting in stack, heap, and time. Deeply nested JSON or
+  HTML from a target used to overflow the stack and end the run; a body of
+  nested tags used to cost ten seconds of CPU per response, once per profile,
+  for every route.
+- Stop recording a query part with no `=` as a query name. A bare token in a
+  query string was being written verbatim into saved reports.
+- Label `inspect` input with a basename. The full local path was printed and
+  serialized into `--format json` output.
+- Remove bidi marks, line and paragraph separators, zero-width characters, and
+  unpaired surrogates from anything printed to a terminal, and cap its length.
+  Only the bidi overrides were being removed before.
+- Escape link and image syntax in saved Markdown. A crafted capture path could
+  reach a reviewer as a working link.
+- Treat `?` as a literal in `exclude.paths`. It was a regex quantifier, so an
+  exclusion silently matched a different set of paths than it read as.
+- Read files through a bounded read on the open descriptor rather than a `stat`
+  on the path followed by an unbounded read of it.
+- Cap a captured request body at 8 MB.
+- Fix `gatecrash update` on Windows, where Node refuses to spawn a `.cmd` file
+  without a shell. The command line is now built by a function that re-checks
+  the version against a strict pattern and is asserted on in tests, so the fix
+  is not `shell: true`.
+- Do not let a failed cleanup replace the real error when writing a report.
+
+### Docs
+
+- Add `docs/go-rewrite.md`: measurements behind the decision to stay on
+  TypeScript and run the single-binary experiment first.
+- Correct the 0.6.0 entry below. It claimed the published SHA-256 checksum was
+  verified before invoking npm. It is not: `SHA256SUMS` is required to exist and
+  its location and size are validated, and the integrity check itself is npm's,
+  against the registry archive. The behaviour has not changed; the claim was
+  wrong.
+
 ## 0.6.0
 
 - Add `gatecrash update` to install the latest stable release, or a specifically
   requested version, from GitHub.
-- Verify GitHub release locations, archive size, and the published SHA-256
-  checksum before invoking npm. Reject implicit downgrades.
+- Verify GitHub release locations and declared asset sizes, and require a
+  `SHA256SUMS` asset to be present, before invoking npm. Reject implicit
+  downgrades. (Corrected: the checksum file itself is not downloaded or
+  verified. npm verifies the registry archive integrity.)
 - Add `gatecrash update --check` for a read-only update check.
 - Install exact self-update versions through the public npm registry with
   package lifecycle scripts disabled.
