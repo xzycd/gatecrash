@@ -20,8 +20,7 @@ import {runInitCommand, type InitCommandOptions} from './commands/init.js';
 import {runInspectCommand, type InspectCommandOptions} from './commands/inspect.js';
 import {runUpdateCommand, type UpdateCommandOptions} from './commands/update.js';
 import {GatecrashError} from './core/errors.js';
-import {plainError, plainWelcome} from './ui/plain.js';
-import {showErrorInterface, showWelcomeInterface} from './ui/run.js';
+import {writeError, writeWelcome} from './ui/surface.js';
 import {VERSION} from './version.js';
 
 function commonOutputOptions(command: Command): Command {
@@ -51,11 +50,7 @@ async function main(): Promise<void> {
       `\nStart safely:\n  ${COMMAND_NAME} demo\n  ${COMMAND_NAME} inspect capture.har\n`,
     )
     .action(() => {
-      if (process.stdout.isTTY) {
-        showWelcomeInterface();
-      } else {
-        process.stdout.write(plainWelcome());
-      }
+      writeWelcome();
     });
 
   commonOutputOptions(
@@ -127,10 +122,6 @@ async function main(): Promise<void> {
 }
 
 void main().catch((error: unknown) => {
-  if (process.stderr.isTTY) {
-    showErrorInterface(error);
-  } else {
-    process.stderr.write(plainError(error));
-  }
+  writeError(error);
   process.exitCode = error instanceof GatecrashError ? error.exitCode : 1;
 });
