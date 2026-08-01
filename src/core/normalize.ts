@@ -15,47 +15,87 @@ function shortHash(value: string): string {
   return createHash('sha256').update(value).digest('hex').slice(0, 12);
 }
 
-export function normalizePath(pathname: string): string {
-  const segments = pathname.split('/').map((segment) => {
-    if (UUID.test(segment)) {
-      return '{uuid}';
-    }
-    if (INTEGER.test(segment)) {
-      return '{int}';
-    }
-    if (HEX_ID.test(segment)) {
-      return '{hex}';
-    }
-    if (LONG_TOKEN.test(segment)) {
-      return '{token}';
-    }
-    return segment;
-  });
+// A capture is full of identifiers, and an identifier in a report is a value
+// somebody can look up. Anything that reads as one is replaced by the shape it
+// had rather than the value it held.
+function placeholderFor(segment: string): string | undefined {
+  if (UUID.test(segment)) {
+    return '{uuid}';
+  }
+  if (INTEGER.test(segment)) {
+    return '{int}';
+  }
+  if (HEX_ID.test(segment)) {
+    return '{hex}';
+  }
+  if (LONG_TOKEN.test(segment)) {
+    return '{token}';
+  }
+  return undefined;
+}
 
+export function normalizePath(pathname: string): string {
+  const segments = pathname.split('/').map((segment) => placeholderFor(segment) ?? segment);
   return segments.join('/') || '/';
 }
 
+// A report may carry query names. It may never carry query values.
+const MAXIMUM_QUERY_NAMES = 64;
+const MAXIMUM_QUERY_NAME_LENGTH = 128;
+
+/**
+ * Splitting on `=` and keeping the left side looks like it only ever yields
+ * names, and for `?page=2` it does. For `?eyJhbGciOiJIUzI1NiJ9...` there is no
+ * `=` at all, so the whole token became its own "name" and went into the saved
+ * report — a query value persisted verbatim, which is the one thing the report
+ * rules forbid. A part with no `=` is treated as a value here and only kept
+ * when it still looks like a name after normalization.
+ */
 export function displayPath(url: URL): {path: string; queryNames: string[]} {
-  const queryNames = [...new Set(
-    url.search
-      .slice(1)
-      .split('&')
-      .map((part) => part.split('=', 1)[0] ?? '')
-      .filter((name) => name !== ''),
-  )].sort();
+  const names = new Set<string>();
+  for (const part of url.search.slice(1).split('&')) {
+    if (part === '' || names.size >= MAXIMUM_QUERY_NAMES) {
+      continue;
+    }
+
+    const separator = part.indexOf('=');
+    const raw = separator === -1 ? part : part.slice(0, separator);
+    if (raw === '') {
+      continue;
+    }
+
+    const name = placeholderFor(raw) ?? (separator === -1 && raw.length > 32 ? '{value}' : raw);
+    names.add(name.slice(0, MAXIMUM_QUERY_NAME_LENGTH));
+  }
+
+  const queryNames = [...names].sort();
   return {
     path: `${url.pathname}${queryNames.length === 0 ? '' : `?${queryNames.join('&')}`}`,
     queryNames,
   };
 }
 
+// `?` was missing from the escape set, so `/admin?/**` compiled to a regex in
+// which the `n` was optional: the pattern silently excluded a different set of
+// paths than it read as. An exclusion that does not mean what it says is how a
+// route gets replayed that the operator believed was out of scope.
+const REGEXP_METACHARACTERS = /[.+^${}()|[\]\\?]/g;
+const globCache = new Map<string, RegExp>();
+
 function globExpression(pattern: string): RegExp {
+  const cached = globCache.get(pattern);
+  if (cached !== undefined) {
+    return cached;
+  }
+
   const escaped = pattern
-    .replaceAll(/[.+^${}()|[\]\\]/g, '\\$&')
+    .replaceAll(REGEXP_METACHARACTERS, '\\$&')
     .replaceAll('**', '\u0000')
     .replaceAll('*', '[^/]*')
     .replaceAll('\u0000', '.*');
-  return new RegExp(`^${escaped}$`);
+  const expression = new RegExp(`^${escaped}$`);
+  globCache.set(pattern, expression);
+  return expression;
 }
 
 export function matchesPath(pathname: string, patterns: string[]): boolean {
