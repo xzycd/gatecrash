@@ -1,6 +1,6 @@
 {
   "name": "@xzycd/gatecrash",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Replay captured web requests across sessions and map authorization boundaries.",
   "type": "module",
   "bin": {
