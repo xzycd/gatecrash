@@ -1,4 +1,5 @@
 import {loadConfig} from '../core/config.js';
+import {GatecrashError} from '../core/errors.js';
 import {checkCapture} from '../core/run.js';
 import {reportJson, reportMarkdown} from '../core/report.js';
 import type {CheckResult, RunProgress} from '../core/types.js';
@@ -44,7 +45,9 @@ export async function runCheckCommand(capture: string, options: CheckCommandOpti
   if (useInterface) {
     const settlement = await runCheckInterface(execute);
     if (settlement.error !== undefined) {
-      process.exitCode = 1;
+      process.exitCode = settlement.error instanceof GatecrashError
+        ? settlement.error.exitCode
+        : 1;
       return;
     }
     if (settlement.result === undefined) {

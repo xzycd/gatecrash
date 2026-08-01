@@ -19,11 +19,11 @@ function isBlocked(status: number | undefined): status is number {
 
 function findingId(route: PreparedRoute, baseline: string, challenger: string): string {
   const digest = createHash('sha256')
-    .update(`${route.method}\n${route.path}\n${baseline}\n${challenger}`)
+    .update(`${route.reportId}\n${baseline}\n${challenger}`)
     .digest('hex')
     .slice(0, 6)
     .toUpperCase();
-  return `GST-${digest}`;
+  return `GTC-${digest}`;
 }
 
 export function compareResponses(
@@ -152,7 +152,7 @@ export function findingFromComparison(
 
   return {
     id: findingId(route, comparison.baseline, comparison.challenger),
-    routeId: route.id,
+    routeId: route.reportId,
     method: route.method,
     path: route.path,
     baseline: comparison.baseline,

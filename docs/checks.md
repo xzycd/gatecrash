@@ -1,6 +1,6 @@
 # How comparison works
 
-Guestlist first establishes that the baseline received a successful response.
+Gatecrash first establishes that the baseline received a successful response.
 It then compares every configured challenger.
 
 ## Response normalization
@@ -14,7 +14,9 @@ visible text. Tag names remain as a small structural signal. Plain text is
 collapsed to normalized whitespace. Binary bodies use a SHA-256 digest.
 
 The body cap applies before normalization. A truncated response is marked in
-the report and should be checked manually.
+the report and cannot count as an exact match. Two successful empty responses
+can still become a medium-confidence review because the status itself may be
+the authorization signal.
 
 ## Outcomes
 

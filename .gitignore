@@ -1,6 +1,7 @@
 node_modules/
 dist/
 coverage/
+.gatecrash/
 .guestlist/
 .DS_Store
 .env

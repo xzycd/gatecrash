@@ -27,7 +27,7 @@ export interface ExcludeConfig {
   extensions: string[];
 }
 
-export interface GuestlistConfig {
+export interface GatecrashConfig {
   target: TargetConfig;
   profiles: ProfileConfig[];
   compare: CompareConfig;
@@ -35,7 +35,6 @@ export interface GuestlistConfig {
 }
 
 export interface CapturedRequest {
-  id: string;
   method: string;
   url: URL;
   headers: Record<string, string>;
@@ -45,6 +44,7 @@ export interface CapturedRequest {
 
 export interface PreparedRoute {
   id: string;
+  reportId: string;
   method: string;
   url: URL;
   path: string;
@@ -68,7 +68,6 @@ export type BodyKind = 'empty' | 'json' | 'html' | 'text' | 'binary';
 export interface ResponseRecord {
   profile: string;
   status?: number;
-  contentType?: string;
   bytes: number;
   kind: BodyKind;
   truncated: boolean;
@@ -138,7 +137,7 @@ export interface ReportSummary {
   skipped: number;
 }
 
-export interface GuestlistReport {
+export interface GatecrashReport {
   schemaVersion: number;
   toolVersion: string;
   run: {
@@ -170,6 +169,10 @@ export interface RunProgress {
   captured: number;
   routes: number;
   skipped: number;
+  profiles: number;
+  replays: number;
+  baseline: string;
+  challengers: string[];
 }
 
 export interface CheckOptions {
@@ -181,6 +184,25 @@ export interface CheckOptions {
 }
 
 export interface CheckResult {
-  report: GuestlistReport;
+  report: GatecrashReport;
   reportPath?: string;
+}
+
+export interface InspectionResult {
+  input: string;
+  targetOrigin: string;
+  baseline: string;
+  challengers: string[];
+  allowedMethods: string[];
+  captured: number;
+  routes: Array<{
+    id: string;
+    method: string;
+    path: string;
+    pattern: string;
+    queryNames: string[];
+  }>;
+  skipped: SkippedRoute[];
+  profiles: number;
+  replays: number;
 }

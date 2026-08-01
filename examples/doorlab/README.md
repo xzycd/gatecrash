@@ -1,6 +1,6 @@
 # Doorlab
 
-Doorlab is the local HTTP server behind `guestlist demo`. It has five routes:
+Doorlab is the local HTTP server behind `gatecrash demo`. It has five routes:
 
 - Alice's account is incorrectly returned to Bob.
 - A member export is incorrectly returned to an anonymous request.
@@ -11,8 +11,8 @@ Doorlab is the local HTTP server behind `guestlist demo`. It has five routes:
 Run it through the public command:
 
 ```bash
-guestlist demo
-guestlist demo --format json --no-save
+gatecrash demo
+gatecrash demo --format json --no-save
 ```
 
 The server listens on a random localhost port and closes after the report is

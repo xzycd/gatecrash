@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.5.0
+
+- Rename the project and command from Guestlist to Gatecrash.
+- Replace the terminal surface with a branded access map, compact live stage
+  rail, outcome glyphs, narrow-terminal tracks, and a useful empty invocation.
+- Add `gatecrash inspect` to preview scope and replay count without resolving
+  secrets or sending requests.
+- Accept only representation headers from captures instead of trying to list
+  every possible credential header.
+- Reject embedded URL credentials, transport headers, raw cookie headers,
+  control characters, and unsafe profile names.
+- Cap capture, config, loaded report, profile-map, and replay-plan sizes. Reject
+  unknown configuration settings instead of ignoring likely misspellings.
+- Replace reports atomically with private file permissions and remove response
+  content types from persisted metadata.
+- Sanitize network errors before storage and terminal text before display.
+- Use report-local route ordinals so public route and finding IDs contain no
+  hash derived from a URL or request body.
+- Pin GitHub Actions to reviewed commits and let Dependabot track action
+  updates.
+- Move default config and state paths to `gatecrash.yml` and `.gatecrash`.
+- Change finding IDs from `GST-` to `GTC-` and increment the report schema to 2.
+  The explain command still reads schema 1 reports.
+
 ## 0.1.1
 
 - Parse HTML with `parse5` instead of filtering tags with regular expressions.

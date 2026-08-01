@@ -1,57 +1,56 @@
-import {createHash} from 'node:crypto';
-import {readFile} from 'node:fs/promises';
 import {extname, resolve} from 'node:path';
-import {GuestlistError} from './errors.js';
+import {hasErrorCode, readLimitedUtf8File} from '../utils/files.js';
+import {containsRequestControl} from '../utils/security.js';
+import {GatecrashError} from './errors.js';
 import type {CapturedRequest} from './types.js';
 
 type UnknownRecord = Record<string, unknown>;
 
-const CAPTURE_HEADER_DENYLIST = new Set([
-  'accept-encoding',
-  'authorization',
-  'connection',
-  'content-length',
-  'cookie',
-  'host',
-  'if-match',
-  'if-modified-since',
-  'if-none-match',
-  'if-range',
-  'if-unmodified-since',
-  'proxy-authorization',
-  'proxy-connection',
-  'range',
-  'te',
-  'trailer',
-  'transfer-encoding',
-  'upgrade',
-  'x-api-key',
+const CAPTURE_MAXIMUM_BYTES = 100_000_000;
+const CAPTURE_MAXIMUM_REQUESTS = 100_000;
+const CAPTURE_MAXIMUM_URL_LENGTH = 16_384;
+const HTTP_METHOD = /^[A-Z][A-Z0-9-]{0,31}$/;
+const HEADER_NAME = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+
+// A HAR is untrusted input and custom headers often carry credentials. Only
+// representation headers survive capture ingestion. Session headers come from
+// the explicit profile configuration.
+const CAPTURE_HEADER_ALLOWLIST = new Set([
+  'accept',
+  'accept-language',
+  'content-type',
 ]);
 
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function shortHash(value: string): string {
-  return createHash('sha256').update(value).digest('hex').slice(0, 12);
-}
-
-function requestId(method: string, url: string, body = ''): string {
-  return `route-${shortHash(`${method}\n${url}\n${body}`)}`;
-}
-
 function parseUrl(value: string, source: string): URL {
+  if (value.length > CAPTURE_MAXIMUM_URL_LENGTH) {
+    throw new GatecrashError(`URL in ${source} is too long.`);
+  }
   try {
     const url = new URL(value);
     if (!['http:', 'https:'].includes(url.protocol)) {
       throw new Error('unsupported protocol');
     }
+    if (url.username !== '' || url.password !== '') {
+      throw new Error('embedded credentials');
+    }
 
     url.hash = '';
     return url;
   } catch {
-    throw new GuestlistError(`Invalid URL in ${source}: ${value}`);
+    throw new GatecrashError(`Invalid HTTP URL in ${source}.`);
   }
+}
+
+function parseMethod(value: string, source: string): string {
+  const method = value.toUpperCase();
+  if (!HTTP_METHOD.test(method)) {
+    throw new GatecrashError(`Invalid HTTP method in ${source}.`);
+  }
+  return method;
 }
 
 export function sanitizeCapturedHeaders(
@@ -64,7 +63,12 @@ export function sanitizeCapturedHeaders(
 
   for (const [name, value] of pairs) {
     const normalizedName = name.toLowerCase();
-    if (!CAPTURE_HEADER_DENYLIST.has(normalizedName)) {
+    if (
+      HEADER_NAME.test(name) &&
+      CAPTURE_HEADER_ALLOWLIST.has(normalizedName) &&
+      value.length <= 16_384 &&
+      !containsRequestControl(value)
+    ) {
       sanitized[normalizedName] = value;
     }
   }
@@ -88,9 +92,16 @@ function harHeaders(value: unknown): Array<{name: string; value: string}> {
 
 export function parseHar(value: unknown, source = 'HAR input'): CapturedRequest[] {
   if (!isRecord(value) || !isRecord(value.log) || !Array.isArray(value.log.entries)) {
-    throw new GuestlistError(`${source} is not a valid HAR file.`, {
+    throw new GatecrashError(`${source} is not a valid HAR file.`, {
       hint: 'Expected a log.entries array containing captured requests.',
     });
+  }
+
+  if (value.log.entries.length > CAPTURE_MAXIMUM_REQUESTS) {
+    throw new GatecrashError(
+      `${source} contains more than ${CAPTURE_MAXIMUM_REQUESTS.toLocaleString()} entries.`,
+      {hint: 'Split the capture into smaller, reviewable runs.'},
+    );
   }
 
   const requests: CapturedRequest[] = [];
@@ -105,12 +116,11 @@ export function parseHar(value: unknown, source = 'HAR input'): CapturedRequest[
       continue;
     }
 
-    const method = methodValue.toUpperCase();
+    const method = parseMethod(methodValue, `${source}, entry ${index + 1}`);
     const postData = isRecord(entry.request.postData) ? entry.request.postData : undefined;
     const body = typeof postData?.text === 'string' ? postData.text : undefined;
     const url = parseUrl(urlValue, `${source}, entry ${index + 1}`);
     requests.push({
-      id: requestId(method, url.href, body),
       method,
       url,
       headers: sanitizeCapturedHeaders(harHeaders(entry.request.headers)),
@@ -120,7 +130,7 @@ export function parseHar(value: unknown, source = 'HAR input'): CapturedRequest[
   }
 
   if (requests.length === 0) {
-    throw new GuestlistError(`${source} does not contain any usable HTTP requests.`);
+    throw new GatecrashError(`${source} does not contain any usable HTTP requests.`);
   }
 
   return requests;
@@ -165,13 +175,15 @@ function parseJsonLine(line: string, source: string): CapturedRequest | undefine
     ['request', 'endpoint'],
   ]);
   if (urlValue === undefined) {
-    throw new GuestlistError(`JSON line in ${source} has no URL or endpoint field.`);
+    throw new GatecrashError(`JSON line in ${source} has no URL or endpoint field.`);
   }
 
-  const method = (nestedString(value, [['method'], ['request', 'method']]) ?? 'GET').toUpperCase();
+  const method = parseMethod(
+    nestedString(value, [['method'], ['request', 'method']]) ?? 'GET',
+    source,
+  );
   const url = parseUrl(urlValue, source);
   return {
-    id: requestId(method, url.href),
     method,
     url,
     headers: {},
@@ -182,6 +194,12 @@ function parseJsonLine(line: string, source: string): CapturedRequest | undefine
 export function parseUrlList(contents: string, source = 'URL input'): CapturedRequest[] {
   const requests: CapturedRequest[] = [];
   const lines = contents.replace(/^\uFEFF/, '').split(/\r?\n/);
+  if (lines.length > CAPTURE_MAXIMUM_REQUESTS) {
+    throw new GatecrashError(
+      `${source} contains more than ${CAPTURE_MAXIMUM_REQUESTS.toLocaleString()} lines.`,
+      {hint: 'Split the capture into smaller, reviewable runs.'},
+    );
+  }
 
   for (const [index, rawLine] of lines.entries()) {
     const line = rawLine.trim();
@@ -200,12 +218,12 @@ export function parseUrlList(contents: string, source = 'URL input'): CapturedRe
 
     const match = /^(?:(GET|HEAD|OPTIONS|POST|PUT|PATCH|DELETE)\s+)?(https?:\/\/\S+)$/i.exec(line);
     if (match === null) {
-      throw new GuestlistError(`Could not read line ${index + 1} in ${source}.`, {
+      throw new GatecrashError(`Could not read line ${index + 1} in ${source}.`, {
         hint: 'Use an absolute URL, an optional HTTP method followed by a URL, or Katana JSONL.',
       });
     }
 
-    const method = (match[1] ?? 'GET').toUpperCase();
+    const method = parseMethod(match[1] ?? 'GET', lineSource);
     const urlValue = match[2];
     if (urlValue === undefined) {
       continue;
@@ -213,7 +231,6 @@ export function parseUrlList(contents: string, source = 'URL input'): CapturedRe
 
     const url = parseUrl(urlValue, lineSource);
     requests.push({
-      id: requestId(method, url.href),
       method,
       url,
       headers: {},
@@ -222,7 +239,7 @@ export function parseUrlList(contents: string, source = 'URL input'): CapturedRe
   }
 
   if (requests.length === 0) {
-    throw new GuestlistError(`${source} does not contain any URLs.`);
+    throw new GatecrashError(`${source} does not contain any URLs.`);
   }
 
   return requests;
@@ -232,10 +249,13 @@ export async function loadCapture(path: string): Promise<CapturedRequest[]> {
   const absolutePath = resolve(path);
   let contents: string;
   try {
-    contents = await readFile(absolutePath, 'utf8');
+    contents = await readLimitedUtf8File(absolutePath, {
+      label: 'Capture file',
+      maximumBytes: CAPTURE_MAXIMUM_BYTES,
+    });
   } catch (error) {
-    if (isRecord(error) && error.code === 'ENOENT') {
-      throw new GuestlistError(`Capture file not found: ${path}`, {
+    if (hasErrorCode(error, 'ENOENT')) {
+      throw new GatecrashError(`Capture file not found: ${path}`, {
         hint: 'Export a HAR file from your browser or pass a text file of URLs.',
       });
     }
@@ -249,10 +269,10 @@ export async function loadCapture(path: string): Promise<CapturedRequest[]> {
   if (harExtension || trimmed.startsWith('{')) {
     try {
       parsedDocument = JSON.parse(contents) as unknown;
-    } catch (error) {
+    } catch {
       if (harExtension) {
-        throw new GuestlistError(`Could not parse HAR file: ${path}`, {
-          hint: error instanceof Error ? error.message : String(error),
+        throw new GatecrashError(`Could not parse HAR file: ${path}`, {
+          hint: 'Check that the file contains valid HAR JSON.',
         });
       }
     }

@@ -1,18 +1,20 @@
 import {createServer, type IncomingMessage, type ServerResponse} from 'node:http';
 import type {AddressInfo} from 'node:net';
-import type {CapturedRequest, GuestlistConfig} from './types.js';
+import type {CapturedRequest, GatecrashConfig} from './types.js';
 
 function send(response: ServerResponse, status: number, value: unknown): void {
   const body = JSON.stringify(value);
   response.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
     'content-length': Buffer.byteLength(body),
+    'cache-control': 'no-store',
+    'x-content-type-options': 'nosniff',
   });
   response.end(body);
 }
 
 function demoHandler(request: IncomingMessage, response: ServerResponse): void {
-  const url = new URL(request.url ?? '/', 'http://guestlist.local');
+  const url = new URL(request.url ?? '/', 'http://gatecrash.local');
   const user = request.headers['x-demo-user'];
 
   if (url.pathname === '/api/account/alice') {
@@ -62,12 +64,16 @@ function demoHandler(request: IncomingMessage, response: ServerResponse): void {
 export interface DemoLab {
   origin: string;
   requests: CapturedRequest[];
-  config: GuestlistConfig;
+  config: GatecrashConfig;
   close: () => Promise<void>;
 }
 
 export async function startDemoLab(): Promise<DemoLab> {
   const server = createServer(demoHandler);
+  server.headersTimeout = 5_000;
+  server.requestTimeout = 5_000;
+  server.keepAliveTimeout = 1_000;
+  server.maxRequestsPerSocket = 100;
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
     server.listen(0, '127.0.0.1', resolve);
@@ -82,7 +88,6 @@ export async function startDemoLab(): Promise<DemoLab> {
     {method: 'POST', path: '/api/profile', body: '{"displayName":"Alice"}'},
   ];
   const requests: CapturedRequest[] = definitions.map((definition, index) => ({
-    id: `demo-${index + 1}`,
     method: definition.method,
     url: new URL(definition.path, origin),
     headers: {'content-type': 'application/json'},
@@ -90,7 +95,7 @@ export async function startDemoLab(): Promise<DemoLab> {
     source: `doorlab:${index + 1}`,
   }));
 
-  const config: GuestlistConfig = {
+  const config: GatecrashConfig = {
     target: {
       origin,
       requestsPerSecond: 40,

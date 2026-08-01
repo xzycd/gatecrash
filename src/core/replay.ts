@@ -1,5 +1,5 @@
 import {VERSION} from '../version.js';
-import {errorMessage} from './errors.js';
+import {COMMAND_NAME} from '../brand.js';
 import {errorResponse, fingerprintResponse} from './fingerprint.js';
 import type {
   CompareConfig,
@@ -72,8 +72,32 @@ function requestHeaders(route: PreparedRoute, profile: ProfileConfig): Record<st
     setHeader(headers, 'cookie', cookies.join('; '));
   }
 
-  setHeader(headers, 'user-agent', `guestlist/${VERSION}`);
+  setHeader(headers, 'accept-encoding', 'identity');
+  setHeader(headers, 'user-agent', `${COMMAND_NAME}/${VERSION}`);
   return headers;
+}
+
+function networkError(error: unknown, timeoutMs: number): string {
+  if (error instanceof DOMException && error.name === 'TimeoutError') {
+    return `Timed out after ${timeoutMs} ms.`;
+  }
+
+  const cause = error instanceof Error && typeof error.cause === 'object' && error.cause !== null
+    ? error.cause as Record<string, unknown>
+    : undefined;
+  const code = typeof cause?.code === 'string' ? cause.code : undefined;
+  const known: Record<string, string> = {
+    ECONNREFUSED: 'Connection refused.',
+    ECONNRESET: 'Connection reset.',
+    ENETUNREACH: 'Network unreachable.',
+    ENOTFOUND: 'Host could not be resolved.',
+    ETIMEDOUT: 'Connection timed out.',
+    UND_ERR_CONNECT_TIMEOUT: 'Connection timed out.',
+  };
+  if (code === undefined || !/^[A-Z0-9_]{1,40}$/.test(code)) {
+    return 'Network request failed.';
+  }
+  return known[code] ?? `Network request failed (${code}).`;
 }
 
 async function readLimitedBody(response: Response, maximumBytes: number): Promise<LimitedBody> {
@@ -129,12 +153,21 @@ async function replayOne(
 ): Promise<InternalResponse> {
   await gate.wait();
   const started = performance.now();
+  if (job.route.url.origin !== target.origin) {
+    return errorResponse(
+      job.profile.name,
+      'Replay stopped because the route left the configured origin.',
+      0,
+    );
+  }
   try {
     const canHaveBody = !['GET', 'HEAD'].includes(job.route.method);
     const response = await fetch(job.route.url, {
       method: job.route.method,
       headers: requestHeaders(job.route, job.profile),
       redirect: 'manual',
+      cache: 'no-store',
+      referrerPolicy: 'no-referrer',
       signal: AbortSignal.timeout(target.timeoutMs),
       ...(canHaveBody && job.route.body !== undefined ? {body: job.route.body} : {}),
     });
@@ -149,9 +182,7 @@ async function replayOne(
       volatileJsonKeys: compare.volatileJsonKeys,
     });
   } catch (error) {
-    const message = error instanceof DOMException && error.name === 'TimeoutError'
-      ? `Timed out after ${target.timeoutMs} ms.`
-      : errorMessage(error);
+    const message = networkError(error, target.timeoutMs);
     return errorResponse(job.profile.name, message, Math.round(performance.now() - started));
   }
 }

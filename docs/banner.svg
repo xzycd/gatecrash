@@ -1,72 +1,66 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-labelledby="title description">
-  <title id="title">Guestlist authorization mapper</title>
-  <description id="description">Guestlist wordmark beside a compact matrix comparing access for Alice, Bob, and an anonymous session.</description>
-  <defs>
-    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#111016"/>
-      <stop offset="1" stop-color="#09090C"/>
-    </linearGradient>
-    <linearGradient id="edge" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#B9A7FF" stop-opacity="0.72"/>
-      <stop offset="1" stop-color="#F08A7E" stop-opacity="0.18"/>
-    </linearGradient>
-    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-      <path d="M40 0H0V40" fill="none" stroke="#FFFFFF" stroke-opacity="0.025"/>
-    </pattern>
-    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur stdDeviation="16"/>
-    </filter>
-  </defs>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="400" viewBox="0 0 1200 400" role="img" aria-labelledby="title description">
+  <title id="title">Gatecrash authorization boundary mapper</title>
+  <description id="description">Gatecrash broken-gate mark beside an access map comparing Alice, Bob, and an anonymous session.</description>
+  <rect width="1200" height="400" rx="24" fill="#0B0D0C"/>
+  <rect x="1" y="1" width="1198" height="398" rx="23" fill="none" stroke="#343A43"/>
+  <rect x="1188" width="12" height="400" rx="0 24 24 0" fill="#C9FF43"/>
 
-  <rect width="1200" height="360" rx="28" fill="url(#background)"/>
-  <rect width="1200" height="360" rx="28" fill="url(#grid)"/>
-  <rect x="1" y="1" width="1198" height="358" rx="27" fill="none" stroke="#FFFFFF" stroke-opacity="0.09"/>
-  <ellipse cx="836" cy="181" rx="250" ry="136" fill="#8B6FFF" opacity="0.07" filter="url(#glow)"/>
+  <g transform="translate(58 50)" fill="none" stroke-linecap="square" stroke-linejoin="miter">
+    <path d="M38 2H2V90H38" stroke="#F4F1E9" stroke-width="6"/>
+    <path d="M82 2H118V90H82" stroke="#F4F1E9" stroke-width="6"/>
+    <path d="M43 14V34L58 44M43 78V58L58 48" stroke="#9CA2AB" stroke-width="4"/>
+    <path d="M77 14V34L62 44M77 78V58L62 48" stroke="#9CA2AB" stroke-width="4"/>
+    <path d="M60 34L72 46L60 58L48 46Z" fill="#C9FF43" stroke="#C9FF43" stroke-width="2"/>
+  </g>
 
   <g font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace">
-    <text x="74" y="78" fill="#8172BE" font-size="13" font-weight="700" letter-spacing="3">AUTHORIZATION MAPPER</text>
-    <text x="70" y="166" fill="#F2F0EA" font-size="72" font-weight="650" letter-spacing="-4">guestlist</text>
-    <text x="75" y="207" fill="#9A96A3" font-size="18">same request. different session.</text>
+    <text x="58" y="182" fill="#C9FF43" font-size="12" font-weight="700" letter-spacing="2.6">AUTHORIZATION BOUNDARY MAPPER / V0.5</text>
+    <text x="54" y="250" fill="#F4F1E9" font-size="68" font-weight="700" letter-spacing="-3">gatecrash</text>
+    <text x="58" y="288" fill="#9CA2AB" font-size="18">same request. wrong session.</text>
+    <path d="M58 323H485" stroke="#343A43"/>
+    <text x="58" y="350" fill="#5C636D" font-size="11" letter-spacing="1.2">HAR  /  URLS  /  CRAWLER JSONL</text>
 
-    <g transform="translate(74 254)">
-      <rect width="72" height="30" rx="15" fill="#B9A7FF" fill-opacity="0.11" stroke="#B9A7FF" stroke-opacity="0.32"/>
-      <text x="36" y="20" text-anchor="middle" fill="#B9A7FF" font-size="12">HAR</text>
-      <rect x="82" width="116" height="30" rx="15" fill="#B9A7FF" fill-opacity="0.11" stroke="#B9A7FF" stroke-opacity="0.32"/>
-      <text x="140" y="20" text-anchor="middle" fill="#B9A7FF" font-size="12">KATANA JSONL</text>
-      <rect x="208" width="72" height="30" rx="15" fill="#B9A7FF" fill-opacity="0.11" stroke="#B9A7FF" stroke-opacity="0.32"/>
-      <text x="244" y="20" text-anchor="middle" fill="#B9A7FF" font-size="12">URLS</text>
-    </g>
+    <g transform="translate(565 46)">
+      <text x="0" y="13" fill="#F4F1E9" font-size="12" font-weight="700" letter-spacing="1.8">ACCESS MAP</text>
+      <text x="528" y="13" text-anchor="end" fill="#5C636D" font-size="10">3 ROUTES / 3 SESSIONS</text>
+      <path d="M0 30H540" stroke="#343A43"/>
 
-    <g transform="translate(620 48)">
-      <rect width="506" height="264" rx="18" fill="#111117" stroke="#FFFFFF" stroke-opacity="0.11"/>
-      <rect x="1" y="1" width="504" height="3" rx="2" fill="url(#edge)"/>
-      <circle cx="27" cy="29" r="4" fill="#F08A7E"/>
-      <text x="42" y="34" fill="#D2CEDA" font-size="13">access map</text>
-      <text x="286" y="34" fill="#686572" font-size="10">ALICE</text>
-      <text x="360" y="34" fill="#686572" font-size="10">BOB</text>
-      <text x="425" y="34" fill="#686572" font-size="10">ANON</text>
-      <path d="M22 49H484" stroke="#FFFFFF" stroke-opacity="0.07"/>
+      <text x="0" y="57" fill="#5C636D" font-size="10">REQUEST</text>
+      <text x="320" y="57" fill="#83A92F" font-size="10">ALICE/BASE</text>
+      <text x="410" y="57" fill="#5C636D" font-size="10">BOB</text>
+      <text x="475" y="57" fill="#5C636D" font-size="10">ANON</text>
 
-      <text x="24" y="82" fill="#F08A7E" font-size="12">◆ GET /api/account/alice</text>
-      <text x="292" y="82" fill="#8FCB9B" font-size="12">200</text>
-      <text x="362" y="82" fill="#F08A7E" font-size="12">200</text>
-      <text x="430" y="82" fill="#777480" font-size="12">401</text>
+      <g font-size="12">
+        <text x="0" y="96" fill="#FF665E">! GET /api/account/alice</text>
+        <text x="322" y="96" fill="#C9FF43">200 ●</text>
+        <text x="410" y="96" fill="#FF665E">200 !</text>
+        <text x="475" y="96" fill="#9CA2AB">401 ×</text>
+        <path d="M0 112H540" stroke="#20252A"/>
 
-      <text x="24" y="120" fill="#F08A7E" font-size="12">◆ GET /api/member/export</text>
-      <text x="292" y="120" fill="#8FCB9B" font-size="12">200</text>
-      <text x="362" y="120" fill="#8FCB9B" font-size="12">200</text>
-      <text x="430" y="120" fill="#F08A7E" font-size="12">200</text>
+        <text x="0" y="143" fill="#FF665E">! GET /api/member/export</text>
+        <text x="322" y="143" fill="#C9FF43">200 ●</text>
+        <text x="410" y="143" fill="#78A8FF">200 ≠</text>
+        <text x="475" y="143" fill="#FF665E">200 !</text>
+        <path d="M0 159H540" stroke="#20252A"/>
 
-      <text x="24" y="158" fill="#D2CEDA" font-size="12">  GET /api/me</text>
-      <text x="292" y="158" fill="#8FCB9B" font-size="12">200</text>
-      <text x="362" y="158" fill="#8FCB9B" font-size="12">200</text>
-      <text x="430" y="158" fill="#777480" font-size="12">401</text>
+        <text x="0" y="190" fill="#F4F1E9">  GET /api/me</text>
+        <text x="322" y="190" fill="#C9FF43">200 ●</text>
+        <text x="410" y="190" fill="#78A8FF">200 ≠</text>
+        <text x="475" y="190" fill="#9CA2AB">401 ×</text>
+      </g>
 
-      <path d="M22 182H484" stroke="#FFFFFF" stroke-opacity="0.07"/>
-      <rect x="24" y="204" width="66" height="24" rx="12" fill="#F08A7E" fill-opacity="0.14"/>
-      <text x="57" y="220" text-anchor="middle" fill="#F08A7E" font-size="10" font-weight="700">REVIEW</text>
-      <text x="104" y="220" fill="#8D8997" font-size="11">2 exact matches crossed a boundary</text>
-      <text x="24" y="248" fill="#5E5A67" font-size="10">GST-E9CA3C  ·  deterministic evidence</text>
+      <path d="M0 218H540" stroke="#343A43"/>
+      <rect x="0" y="240" width="9" height="9" fill="#FF665E"/>
+      <text x="22" y="249" fill="#FF665E" font-size="11" font-weight="700">2 NEED REVIEW</text>
+      <text x="0" y="281" fill="#F4F1E9" font-size="11">GTC-7A1F0B</text>
+      <text x="108" y="281" fill="#5C636D" font-size="11">alice 200</text>
+      <path d="M190 277H262" stroke="#343A43"/>
+      <circle cx="262" cy="277" r="3" fill="#FF665E"/>
+      <text x="276" y="281" fill="#FF665E" font-size="11">bob 200 / exact</text>
+      <text x="0" y="318" fill="#83A92F" font-size="10">● BASELINE</text>
+      <text x="105" y="318" fill="#FF665E" font-size="10">! REVIEW</text>
+      <text x="200" y="318" fill="#9CA2AB" font-size="10">× BLOCKED</text>
+      <text x="300" y="318" fill="#78A8FF" font-size="10">≠ CHANGED</text>
     </g>
   </g>
 </svg>

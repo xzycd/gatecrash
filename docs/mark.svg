@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title description">
+  <title id="title">Gatecrash mark</title>
+  <description id="description">A bright request diamond passing through a split gate.</description>
+  <rect width="256" height="256" rx="36" fill="#0B0D0C"/>
+  <g fill="none" stroke-linecap="square" stroke-linejoin="miter">
+    <path d="M84 48H48V208H84" stroke="#F4F1E9" stroke-width="10"/>
+    <path d="M172 48H208V208H172" stroke="#F4F1E9" stroke-width="10"/>
+    <path d="M92 66V103L118 121M92 190V153L118 135" stroke="#9CA2AB" stroke-width="7"/>
+    <path d="M164 66V103L138 121M164 190V153L138 135" stroke="#9CA2AB" stroke-width="7"/>
+    <path d="M128 106L150 128L128 150L106 128Z" fill="#C9FF43" stroke="#C9FF43" stroke-width="3"/>
+  </g>
+</svg>

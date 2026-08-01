@@ -1,9 +1,14 @@
 import {describe, expect, it} from 'vitest';
 import {startDemoLab} from '../src/core/demo-lab.js';
-import {checkRequests} from '../src/core/run.js';
+import {assertReplayLimit, checkRequests, MAXIMUM_REPLAYS} from '../src/core/run.js';
 import type {RunStage} from '../src/core/types.js';
 
 describe('complete check', () => {
+  it('caps a replay plan before any network work starts', () => {
+    expect(() => assertReplayLimit(MAXIMUM_REPLAYS)).not.toThrow();
+    expect(() => assertReplayLimit(MAXIMUM_REPLAYS + 1)).toThrowError(/Replay plan is too large/);
+  });
+
   it('finds the two planted authorization mistakes without persisting bodies', async () => {
     const lab = await startDemoLab();
     try {

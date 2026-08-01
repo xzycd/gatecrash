@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-01T00:39:43Z",
+  "title": "Design System: Gatecrash",
+  "extensions": {
+    "colorMeta": {
+      "venue-black": {"role": "neutral", "displayName": "Venue Black"},
+      "live-lamp": {"role": "primary", "displayName": "Live Lamp"},
+      "live-muted": {"role": "primary", "displayName": "Muted Live Lamp"},
+      "review-coral": {"role": "secondary", "displayName": "Review Coral"},
+      "warning-amber": {"role": "secondary", "displayName": "Warning Amber"},
+      "success-mint": {"role": "secondary", "displayName": "Success Mint"},
+      "changed-blue": {"role": "secondary", "displayName": "Changed Blue"},
+      "warm-white": {"role": "neutral", "displayName": "Warm White"},
+      "steel-text": {"role": "neutral", "displayName": "Steel Text"},
+      "steel-faint": {"role": "neutral", "displayName": "Steel Faint"},
+      "rail": {"role": "neutral", "displayName": "Rail"},
+      "track": {"role": "neutral", "displayName": "Track"}
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "active-diamond-step",
+        "value": "140ms two-frame step",
+        "purpose": "Alternates a filled and open diamond only while a run is active."
+      }
+    ],
+    "breakpoints": [
+      {"name": "full-logo", "value": "58ch"},
+      {"name": "stacked-legend", "value": "70ch"},
+      {"name": "stacked-access-map", "value": "78ch"},
+      {"name": "content-cap", "value": "140ch"}
+    ]
+  },
+  "components": [
+    {
+      "name": "Compact Masthead",
+      "kind": "custom",
+      "refersTo": "brand-mark",
+      "description": "The broken-gate mark, lower-case command, and quiet command mode.",
+      "html": "<div class=\"ds-masthead\"><strong class=\"ds-mark\">◆╾┫</strong><strong>gatecrash</strong><span>/ check</span></div>",
+      "css": ".ds-masthead { display:flex; gap:1ch; align-items:baseline; color:#F4F1E9; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; } .ds-mark { color:#C9FF43; } .ds-masthead span { color:#5C636D; }"
+    },
+    {
+      "name": "Stage Rail",
+      "kind": "custom",
+      "refersTo": "channel-label",
+      "description": "A fixed five-stage run rail with one active diamond.",
+      "html": "<div class=\"ds-stage\"><span>✓ READ</span><span>✓ SCOPE</span><strong>◆ REPLAY</strong><span>· COMPARE</span><span>· REPORT</span></div>",
+      "css": ".ds-stage { display:grid; gap:.35rem; color:#5C636D; font:700 13px/1.25 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; } .ds-stage span:first-child,.ds-stage span:nth-child(2) { color:#6EE7A8; } .ds-stage strong { color:#F4F1E9; } .ds-stage strong::first-letter { color:#C9FF43; }"
+    },
+    {
+      "name": "Review Cell",
+      "kind": "custom",
+      "refersTo": "status-review",
+      "description": "A status and glyph that identify a matching successful crossing.",
+      "html": "<span class=\"ds-review-cell\">200 !</span>",
+      "css": ".ds-review-cell { color:#FF665E; font:700 14px/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }"
+    },
+    {
+      "name": "Finding Trace",
+      "kind": "custom",
+      "refersTo": "status-review",
+      "description": "A compact evidence line from the baseline session to the wrong session.",
+      "html": "<div class=\"ds-trace\"><strong>! GTC-A13F22</strong><span>alice 200</span><i>───────</i><b>bob 200</b><small>exact match</small></div>",
+      "css": ".ds-trace { display:flex; flex-wrap:wrap; gap:1ch; align-items:center; color:#9CA2AB; font:13px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; } .ds-trace strong,.ds-trace b { color:#FF665E; } .ds-trace i { color:#343A43; font-style:normal; } .ds-trace small { color:#9CA2AB; }"
+    },
+    {
+      "name": "Next Action",
+      "kind": "custom",
+      "refersTo": "next-action",
+      "description": "One copyable safe command at the end of a view.",
+      "html": "<div class=\"ds-next\"><strong>next</strong><code>gatecrash explain GTC-A13F22</code></div>",
+      "css": ".ds-next { display:flex; gap:2ch; color:#F4F1E9; font:13px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; } .ds-next strong { color:#C9FF43; } .ds-next code { color:inherit; font:inherit; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Midnight Patch Bay",
+    "overview": "Gatecrash borrows from the working side of a small music venue: labeled channels, physical routing, admission marks, and one lamp that tells the operator where attention is needed. Every flourish also explains a boundary, a session, or a result.",
+    "keyCharacteristics": [
+      "Broken-gate mark and lower-case wordmark",
+      "Flat high-contrast color with one electric admission accent",
+      "Channel rails and compact status lamps",
+      "Quiet density after a strong first-run identity"
+    ],
+    "rules": [
+      {"name": "The Live Lamp Rule", "body": "Chartreuse marks current work, baseline access, the brand, and the next safe action.", "section": "colors"},
+      {"name": "The Channel Label Rule", "body": "Uppercase is reserved for short section and state labels.", "section": "typography"},
+      {"name": "The Flat Room Rule", "body": "Depth comes from rails, indentation, and contrast, never decorative glow or shadow.", "section": "elevation"}
+    ],
+    "dos": [
+      "Do pair every semantic color with a word, number, or glyph.",
+      "Do keep a direct trace from route to session to outcome.",
+      "Do preserve useful output at 44 columns and with color disabled."
+    ],
+    "donts": [
+      "Don't turn groups into bordered cards.",
+      "Don't use gradients, glow, or decorative animation.",
+      "Don't clear completed output from scrollback."
+    ]
+  }
+}

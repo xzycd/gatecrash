@@ -1,67 +1,73 @@
 <div align="center">
 
-<img src="docs/banner.svg" alt="Guestlist, an authorization mapper for captured web traffic" width="920">
+<img src="docs/banner.svg" alt="Gatecrash, an authorization boundary mapper for captured web traffic" width="920">
 
-**Same request. Different session.**
+**Replay a captured request with the wrong session and see what still gets in.**
 
-Guestlist replays captured web requests as several users and points out responses
-that deserve a closer look.
-
-[![ci](https://github.com/xzycd/guestlist/actions/workflows/ci.yml/badge.svg)](https://github.com/xzycd/guestlist/actions/workflows/ci.yml)
+[![ci](https://github.com/xzycd/gatecrash/actions/workflows/ci.yml/badge.svg)](https://github.com/xzycd/gatecrash/actions/workflows/ci.yml)
 [![node](https://img.shields.io/badge/node-22.12%2B-5FA04E)](https://nodejs.org/)
-[![license](https://img.shields.io/badge/license-MIT-B9A7FF)](LICENSE)
+[![license](https://img.shields.io/badge/license-MIT-C9FF43)](LICENSE)
 
 </div>
 
----
+Finding routes is easy. Rechecking them as an admin, a member, and an anonymous
+visitor gets old fast.
 
-Most recon tools are good at finding routes. The awkward part comes next: take
-a request that worked as one user, replay it as somebody else, and decide
-whether the response crossed an access boundary.
+Gatecrash reads a browser HAR, a URL list, or crawler JSONL. It replays each
+eligible request with the sessions in `gatecrash.yml`, fingerprints the
+responses, and draws an access map in the terminal. Matching successful
+responses become review leads.
 
-Guestlist does that one job. It reads a browser HAR, a URL list, or JSONL from a
-crawler. Each request is sent with the sessions in `guestlist.yml`. The result
-is an access map with the HTTP status and body similarity for every profile.
+Gatecrash does not declare vulnerabilities. HTTP similarity cannot tell you the
+application's intended policy, so the final judgment stays with the tester.
 
-It does not call a response vulnerable. Business rules live outside the HTTP
-exchange, so Guestlist reports evidence and leaves the verdict to the tester.
-
-## Try the built-in lab
+## Try the local lab
 
 ```bash
-npm install -g github:xzycd/guestlist
-guestlist demo
+npm install -g github:xzycd/gatecrash
+gatecrash demo
 ```
 
-The lab runs on localhost, contains two deliberate access-control mistakes, and
-shuts down when the check finishes. Its result is useful for checking terminal
-rendering too.
+The demo binds to a random loopback port, contains two deliberate authorization
+mistakes, and shuts down after the run.
 
 ```text
-guestlist check  http://127.0.0.1:64762
-3 routes · 3 profiles · 215 ms
+◆╾┫ gatecrash / check
 
-2 results to review:
+http://127.0.0.1:50641                    3 routes × 3 sessions · 208 ms
 
-GST-E9CA3C  GET /api/account/alice
-  alice 200 -> bob 200 · exact body match
+ACCESS MAP  3 routes · 3 sessions
+
+REQUEST                                   alice/base  bob         anonymous
+──────────────────────────────────────────────────────────────────────────────
+! GET /api/account/alice                  200 ●       200 !       401 ×
+! GET /api/member/export                  200 ●       200 ≠       200 !
+  GET /api/me                             200 ●       200 ≠       401 ×
+
+● baseline  ! review  × blocked  ≠ changed  ? inconclusive
+
+2 NEED REVIEW
+
+! GTC-7A1F0B HIGH GET /api/account/alice
+  alice 200 ─────── bob 200 exact match
   bob received the same successful response as alice.
 
-GST-9066EE  GET /api/member/export
-  alice 200 -> anonymous 200 · exact body match
+! GTC-B0BB10 HIGH GET /api/member/export
+  alice 200 ─────── anonymous 200 exact match
   anonymous received the same successful response as alice.
 
-2 blocked · 2 changed · 2 skipped
+2 REVIEW  2 BLOCKED  2 CHANGED  0 ERRORS  2 SKIPPED
+next    gatecrash explain GTC-7A1F0B
 ```
 
-That output comes from the current demo, apart from the port and timing.
+The port and timing change on each run. The rest comes from the current demo.
 
-## Use it on a lab or authorized target
+## A real run
 
-Write a starter config:
+Start with a config:
 
 ```bash
-guestlist init
+gatecrash init
 ```
 
 ```yaml
@@ -93,13 +99,34 @@ exclude:
   paths: [/health, /assets/**]
 ```
 
-Export a HAR from the browser network panel, then run:
+Preview the scope before sending traffic:
 
 ```bash
-ADMIN_TOKEN=... MEMBER_TOKEN=... guestlist check session.har
+gatecrash inspect session.har
 ```
 
-Plain URL files work too:
+`inspect` reads the config without resolving session secrets. It shows the
+target, allowed methods, routes, skipped requests, and total replay count. It
+does not make network requests.
+
+Run the comparison when the preview looks right:
+
+```bash
+ADMIN_TOKEN=... MEMBER_TOKEN=... gatecrash check session.har
+```
+
+Open the evidence for one result:
+
+```bash
+gatecrash explain GTC-7A1F0B
+```
+
+## Capture formats
+
+HAR files work directly. Export one from the browser network panel or your
+proxy.
+
+A plain URL file can include an optional method:
 
 ```text
 https://app.example.test/api/me
@@ -107,89 +134,105 @@ GET https://app.example.test/api/admin/users
 HEAD https://app.example.test/downloads/report
 ```
 
-JSONL can use `url`, `endpoint`, `request.url`, or `request.endpoint`. This makes
-the output of crawlers such as Katana usable without a conversion script.
+JSONL accepts `url`, `endpoint`, `request.url`, or `request.endpoint`. Common
+crawler output, including Katana JSONL, does not need a conversion script.
 
-## Reading the access map
+Query values are replayed but never printed or saved. The access map shows query
+names only, such as `/search?q&page`.
 
-A challenger gets one of these outcomes for each route:
+## Reading the map
 
-| Outcome | Meaning |
-|---|---|
-| `review` | Both profiles succeeded and the normalized bodies met the similarity threshold. |
-| `blocked` | The challenger received a redirect, `401`, `403`, or `404`. |
-| `changed` | Both profiles succeeded but returned meaningfully different bodies. |
-| `inconclusive` | The baseline failed, or the challenger returned another status. |
-| `error` | The request timed out or failed before a response arrived. |
+Each cell includes a status code and a symbol, so the result still reads with
+color disabled.
 
-JSON comparison ignores configured volatile fields such as request IDs and CSRF
-tokens. HTML comparison uses visible text and tag structure. Text uses token
-overlap. The same deterministic code runs in the terminal and in CI.
+| Symbol | Outcome | Meaning |
+|---:|---|---|
+| `●` | baseline | The configured baseline response. |
+| `!` | review | A lower or equal profile received a matching successful response. |
+| `×` | blocked | The challenger received a redirect, `401`, `403`, or `404`. |
+| `≠` | changed | Both sessions succeeded, but their response bodies differ. |
+| `=` | same | The bodies match, but the challenger has a higher configured level. |
+| `?` | inconclusive | The baseline failed or the challenger returned another status. |
 
-Inspect any result later:
+JSON uses stable key ordering and replaces configured volatile values. HTML is
+parsed and compared through visible text plus tag structure. Plain text uses
+token overlap. Binary bodies use SHA-256.
 
-```bash
-guestlist explain GST-E9CA3C
-guestlist explain GST-E9CA3C --report .guestlist/runs/2026-08-01T120000Z.json
-```
+See [docs/checks.md](docs/checks.md) for the classification rules and
+[docs/report-schema.md](docs/report-schema.md) for saved output.
 
-## Safe defaults
+## Safety model
 
-Guestlist is meant for systems you own or have permission to test.
+Gatecrash is for systems you own or have permission to test.
 
-- A target has one exact origin. Captured requests to another origin are skipped.
-- Captured authorization, cookies, proxy credentials, and API keys are discarded.
-- Profile secrets come from environment variables and stay out of saved reports.
+- Every replay must match `target.origin` exactly.
+- Embedded credentials in target and capture URLs are rejected.
+- Captured custom headers are discarded. Only `Accept`, `Accept-Language`, and
+  `Content-Type` survive ingestion.
+- Authorization headers, cookies, and other session values come from the config.
+  Environment variables are resolved only when a check starts.
+- `Host`, `Content-Length`, hop-by-hop headers, raw cookie headers, and header
+  values containing control characters are rejected in profiles.
 - Only `GET`, `HEAD`, and `OPTIONS` run by default.
 - Redirects are recorded but never followed.
-- Responses are capped at 1 MB unless the config says otherwise.
-- Reports contain paths, status codes, sizes, and comparison results. They do not contain headers or bodies.
+- Responses are capped at 1 MB by default.
+- Capture files are capped at 100 MB and 100,000 entries. A check is capped at
+  100,000 replay requests so an accidental export cannot become an unbounded
+  run.
+- Reports contain no request headers, response headers, cookies, tokens, request
+  bodies, response bodies, or query values.
+- Report files are replaced atomically and use mode `0600` where the platform
+  supports it.
 
-Allow another method only when its effect is understood:
+Allow another method only after checking its side effects:
 
 ```bash
-guestlist check session.har --allow-method POST
+gatecrash inspect session.har --allow-method POST
+gatecrash check session.har --allow-method POST
 ```
 
-## Output for scripts and CI
+## Scripts and CI
 
 ```bash
-guestlist check session.har --format json --no-save
-guestlist check session.har --format markdown --out report.md
-guestlist check session.har --plain --fail-on-review
+gatecrash check session.har --format json --no-save
+gatecrash check session.har --format markdown --out report.md
+gatecrash check session.har --plain --fail-on-review
+gatecrash inspect session.har --format json
 ```
 
 Exit codes are stable:
 
-- `0` means the check completed.
-- `1` means Guestlist could not complete the check.
-- `2` means the check completed with review results and `--fail-on-review` was set.
+- `0` means the command completed.
+- `1` means the command could not complete.
+- `2` means a check completed with review results and `--fail-on-review` was set.
 
-Terminal output is inline and responsive. It does not use the alternate screen,
-so scrollback, SSH sessions, narrow panes, and copied output continue to work.
-When stdout is not a terminal, the default renderer switches to plain text.
+The live interface renders inline. It does not use the alternate screen or clear
+scrollback. Non-TTY output switches to plain text, and JSON stdout contains JSON
+only.
 
 ## Current limits
 
-One run has one baseline profile. Guestlist does not refresh sessions, execute a
-login flow, or infer an application's intended policy. Stateful extraction and
-multi-capture comparisons belong in later releases. The current version stays
-small enough to audit and predictable enough to put in a lab workflow.
+One run has one baseline profile. Gatecrash does not refresh sessions, execute a
+login flow, crawl a browser, or infer business policy. Raw exchanges stay in the
+original browser or proxy capture because saved reports are deliberately
+sanitized. Configuration accepts up to 64 profiles and rejects unknown setting
+names so misspellings do not silently weaken a run.
 
 ## Develop
 
 ```bash
-git clone https://github.com/xzycd/guestlist.git
-cd guestlist
+git clone https://github.com/xzycd/gatecrash.git
+cd gatecrash
 npm install
 npm run check
 npm run demo
 ```
 
-The test suite covers config parsing, HAR sanitization, scope enforcement,
-fingerprints, classification, terminal rendering, the CLI process, and a full
-run against the local lab. See [CONTRIBUTING.md](CONTRIBUTING.md) before changing
-the report schema or network behavior.
+The test suite covers config parsing, capture sanitization, scope enforcement,
+fingerprinting, classification, report privacy, the terminal surface, the CLI
+process, and a complete run against the loopback lab. Read
+[CONTRIBUTING.md](CONTRIBUTING.md) before changing the report schema or replay
+behavior.
 
 ## License
 

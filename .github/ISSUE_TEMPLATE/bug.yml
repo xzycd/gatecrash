@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a reproducible Guestlist problem without target data.
+description: Report a reproducible Gatecrash problem without target data.
 title: "bug: "
 labels: [bug]
 body:
@@ -9,8 +9,8 @@ body:
   - type: input
     id: version
     attributes:
-      label: Guestlist version
-      placeholder: 0.1.0
+      label: Gatecrash version
+      placeholder: 0.5.0
     validations:
       required: true
   - type: input

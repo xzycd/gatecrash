@@ -36,7 +36,13 @@ export function normalizePath(pathname: string): string {
 }
 
 export function displayPath(url: URL): {path: string; queryNames: string[]} {
-  const queryNames = [...new Set([...url.searchParams.keys()])].sort();
+  const queryNames = [...new Set(
+    url.search
+      .slice(1)
+      .split('&')
+      .map((part) => part.split('=', 1)[0] ?? '')
+      .filter((name) => name !== ''),
+  )].sort();
   return {
     path: `${url.pathname}${queryNames.length === 0 ? '' : `?${queryNames.join('&')}`}`,
     queryNames,
@@ -77,10 +83,13 @@ export function prepareRoutes(
   const skipped: SkippedRoute[] = [];
   const seen = new Set<string>();
 
-  for (const request of requests) {
+  for (const [requestIndex, request] of requests.entries()) {
     const {path, queryNames} = displayPath(request.url);
+    // Persist only a report-local ordinal. Hashing the request URL or body into
+    // a public ID would still expose a value that can be guessed offline.
+    const reportId = `route-${String(requestIndex + 1).padStart(4, '0')}`;
     const skip = (reason: SkippedRoute['reason'], detail: string): void => {
-      skipped.push({id: request.id, method: request.method, path, reason, detail});
+      skipped.push({id: reportId, method: request.method, path, reason, detail});
     };
 
     if (request.url.origin !== origin) {
@@ -110,6 +119,7 @@ export function prepareRoutes(
 
     routes.push({
       id: `route-${shortHash(dedupeKey)}`,
+      reportId,
       method: request.method,
       url: request.url,
       path,

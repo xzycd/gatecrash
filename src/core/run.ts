@@ -1,8 +1,9 @@
 import {randomUUID} from 'node:crypto';
+import {basename} from 'node:path';
 import {REPORT_SCHEMA_VERSION, VERSION} from '../version.js';
 import {loadCapture} from './capture.js';
 import {compareResponses, findingFromComparison} from './classify.js';
-import {GuestlistError} from './errors.js';
+import {GatecrashError} from './errors.js';
 import {publicResponse} from './fingerprint.js';
 import {prepareRoutes} from './normalize.js';
 import {replayRoutes} from './replay.js';
@@ -13,36 +14,58 @@ import type {
   CheckResult,
   Comparison,
   Finding,
-  GuestlistConfig,
-  GuestlistReport,
+  GatecrashConfig,
+  GatecrashReport,
   InternalResponse,
   ProfileConfig,
   RouteReport,
   RunProgress,
 } from './types.js';
 
+export const MAXIMUM_REPLAYS = 100_000;
+
+export function assertReplayLimit(totalReplays: number): void {
+  if (totalReplays > MAXIMUM_REPLAYS) {
+    throw new GatecrashError(
+      `Replay plan is too large (${totalReplays.toLocaleString()} requests).`,
+      {hint: `Reduce the capture or profile set to ${MAXIMUM_REPLAYS.toLocaleString()} replays or fewer.`},
+    );
+  }
+}
+
 function progress(
   options: CheckOptions,
-  update: Omit<RunProgress, 'captured' | 'routes' | 'skipped'> & {
+  update: Omit<
+    RunProgress,
+    'captured' | 'routes' | 'skipped' | 'profiles' | 'replays' | 'baseline' | 'challengers'
+  > & {
     captured?: number;
     routes?: number;
     skipped?: number;
+    profiles?: number;
+    replays?: number;
+    baseline?: string;
+    challengers?: string[];
   },
 ): void {
   options.onProgress?.({
     captured: update.captured ?? 0,
     routes: update.routes ?? 0,
     skipped: update.skipped ?? 0,
+    profiles: update.profiles ?? 0,
+    replays: update.replays ?? 0,
+    baseline: update.baseline ?? '',
+    challengers: update.challengers ?? [],
     ...update,
   });
 }
 
-function selectedProfiles(config: GuestlistConfig): ProfileConfig[] {
+export function selectedProfiles(config: GatecrashConfig): ProfileConfig[] {
   const names = [config.compare.baseline, ...config.compare.against];
   return names.map((name) => {
     const profile = config.profiles.find((candidate) => candidate.name === name);
     if (profile === undefined) {
-      throw new GuestlistError(`Profile ${name} is missing from the loaded configuration.`);
+      throw new GatecrashError(`Profile ${name} is missing from the loaded configuration.`);
     }
     return profile;
   });
@@ -51,24 +74,32 @@ function selectedProfiles(config: GuestlistConfig): ProfileConfig[] {
 function responseFor(responses: InternalResponse[], profile: string): InternalResponse {
   const response = responses.find((candidate) => candidate.profile === profile);
   if (response === undefined) {
-    throw new GuestlistError(`No response was recorded for profile ${profile}.`);
+    throw new GatecrashError(`No response was recorded for profile ${profile}.`);
   }
   return response;
 }
 
 export async function checkRequests(
   requests: CapturedRequest[],
-  config: GuestlistConfig,
+  config: GatecrashConfig,
   options: CheckOptions,
 ): Promise<CheckResult> {
   const started = performance.now();
   const startedAt = new Date().toISOString();
+  const profiles = selectedProfiles(config);
+  const progressContext = {
+    profiles: profiles.length,
+    replays: 0,
+    baseline: config.compare.baseline,
+    challengers: config.compare.against,
+  };
   progress(options, {
     stage: 'capture',
     completed: requests.length,
     total: requests.length,
     detail: `${requests.length} captured request${requests.length === 1 ? '' : 's'}`,
     captured: requests.length,
+    ...progressContext,
   });
 
   const prepared = prepareRoutes(
@@ -85,16 +116,17 @@ export async function checkRequests(
     captured: requests.length,
     routes: prepared.routes.length,
     skipped: prepared.skipped.length,
+    ...progressContext,
   });
 
   if (prepared.routes.length === 0) {
-    throw new GuestlistError('No requests are eligible for replay.', {
+    throw new GatecrashError('No requests are eligible for replay.', {
       hint: 'Check target.origin, exclusions, and --allow-method options.',
     });
   }
 
-  const profiles = selectedProfiles(config);
   const totalReplays = prepared.routes.length * profiles.length;
+  assertReplayLimit(totalReplays);
   const grouped = await replayRoutes(prepared.routes, profiles, {
     target: config.target,
     compare: config.compare,
@@ -108,13 +140,15 @@ export async function checkRequests(
         captured: requests.length,
         routes: prepared.routes.length,
         skipped: prepared.skipped.length,
+        ...progressContext,
+        replays: totalReplays,
       });
     },
   });
 
   const baselineProfile = profiles[0];
   if (baselineProfile === undefined) {
-    throw new GuestlistError('No baseline profile is available.');
+    throw new GatecrashError('No baseline profile is available.');
   }
   const findings: Finding[] = [];
   const routeReports: RouteReport[] = [];
@@ -141,7 +175,7 @@ export async function checkRequests(
     }
 
     routeReports.push({
-      id: route.id,
+      id: route.reportId,
       method: route.method,
       path: route.path,
       pattern: route.pattern,
@@ -157,11 +191,13 @@ export async function checkRequests(
       captured: requests.length,
       routes: prepared.routes.length,
       skipped: prepared.skipped.length,
+      ...progressContext,
+      replays: totalReplays,
     });
   }
 
   const comparisons = routeReports.flatMap((route) => route.comparisons);
-  const report: GuestlistReport = {
+  const report: GatecrashReport = {
     schemaVersion: REPORT_SCHEMA_VERSION,
     toolVersion: VERSION,
     run: {
@@ -204,6 +240,8 @@ export async function checkRequests(
     captured: requests.length,
     routes: prepared.routes.length,
     skipped: prepared.skipped.length,
+    ...progressContext,
+    replays: totalReplays,
   });
 
   return {report, ...(reportPath === undefined ? {} : {reportPath})};
@@ -211,9 +249,9 @@ export async function checkRequests(
 
 export async function checkCapture(
   capturePath: string,
-  config: GuestlistConfig,
+  config: GatecrashConfig,
   options: Omit<CheckOptions, 'inputLabel'>,
 ): Promise<CheckResult> {
   const requests = await loadCapture(capturePath);
-  return checkRequests(requests, config, {...options, inputLabel: capturePath});
+  return checkRequests(requests, config, {...options, inputLabel: basename(capturePath)});
 }

@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vitest';
 import {parseConfig} from '../src/core/config.js';
-import {GuestlistError} from '../src/core/errors.js';
+import {GatecrashError} from '../src/core/errors.js';
 
 function source(): Record<string, unknown> {
   return {
@@ -51,8 +51,8 @@ describe('config', () => {
       parseConfig(value, {ADMIN_TOKEN: 'a', MEMBER_COOKIE: 'b'});
       expect.fail('Expected config parsing to fail.');
     } catch (error) {
-      expect(error).toBeInstanceOf(GuestlistError);
-      expect((error as GuestlistError).hint).toContain('https://app.example.test');
+      expect(error).toBeInstanceOf(GatecrashError);
+      expect((error as GatecrashError).hint).toContain('https://app.example.test');
     }
   });
 
@@ -70,5 +70,65 @@ describe('config', () => {
     expect(() => parseConfig(value, {ADMIN_TOKEN: 'a', MEMBER_COOKIE: 'b'})).toThrowError(
       /same profile twice/,
     );
+  });
+
+  it('can inspect configuration without resolving session secrets', () => {
+    const config = parseConfig(source(), {}, {resolveEnvironment: false});
+    expect(config.profiles[0]?.headers.Authorization).toBe('Bearer <environment>');
+    expect(config.profiles[1]?.cookies.session).toBe('<environment>');
+  });
+
+  it('rejects embedded target credentials', () => {
+    const value = source();
+    value.target = {origin: 'https://alice:secret@app.example.test'};
+    expect(() => parseConfig(value, {ADMIN_TOKEN: 'a', MEMBER_COOKIE: 'b'})).toThrowError(
+      /embedded credentials/,
+    );
+  });
+
+  it('rejects transport headers and raw cookie headers in profiles', () => {
+    const value = source();
+    const profiles = value.profiles as Record<string, Record<string, unknown>>;
+    profiles.admin = {level: 100, headers: {Host: 'other.example'}};
+    expect(() => parseConfig(value, {MEMBER_COOKIE: 'b'})).toThrowError(/not an allowed/);
+
+    profiles.admin = {level: 100, headers: {Cookie: 'session=secret'}};
+    expect(() => parseConfig(value, {MEMBER_COOKIE: 'b'})).toThrowError(/not an allowed/);
+  });
+
+  it('rejects header injection and unsafe profile names', () => {
+    const value = source();
+    const profiles = value.profiles as Record<string, Record<string, unknown>>;
+    profiles.admin = {level: 100, headers: {Authorization: 'ok\r\nX-Evil: yes'}};
+    expect(() => parseConfig(value, {MEMBER_COOKIE: 'b'})).toThrowError(/invalid header value/);
+
+    profiles.admin = {level: 100, headers: {Authorization: 'ok\u001B[31m'}};
+    expect(() => parseConfig(value, {MEMBER_COOKIE: 'b'})).toThrowError(/invalid header value/);
+
+    profiles.admin = {level: 100, headers: {Authorization: 'Bearer fixed'}};
+    profiles['bad profile'] = profiles.member ?? {};
+    delete profiles.member;
+    expect(() => parseConfig(value, {})).toThrowError(/Profile name/);
+  });
+
+  it('rejects misspelled and unknown settings', () => {
+    const value = source();
+    const target = value.target as Record<string, unknown>;
+    target.concurency = 8;
+    expect(() => parseConfig(value, {ADMIN_TOKEN: 'a', MEMBER_COOKIE: 'b'})).toThrowError(
+      /target\.concurency is not a supported setting/,
+    );
+  });
+
+  it('caps profile maps before expanding their values', () => {
+    const value = source();
+    const profiles = value.profiles as Record<string, Record<string, unknown>>;
+    profiles.admin = {
+      level: 100,
+      headers: Object.fromEntries(
+        Array.from({length: 129}, (_, index) => [`X-Test-${index}`, '${SECRET}']),
+      ),
+    };
+    expect(() => parseConfig(value, {MEMBER_COOKIE: 'b'})).toThrowError(/128 entries/);
   });
 });

@@ -162,7 +162,6 @@ export function fingerprintResponse(input: FingerprintInput): InternalResponse {
   return {
     profile: input.profile,
     status: input.status,
-    contentType: input.contentType,
     bytes: input.body.byteLength,
     kind,
     truncated: input.truncated,
@@ -226,7 +225,6 @@ export function publicResponse(response: InternalResponse): ResponseRecord {
   const {
     profile,
     status,
-    contentType,
     bytes,
     kind,
     truncated,
@@ -236,7 +234,6 @@ export function publicResponse(response: InternalResponse): ResponseRecord {
   return {
     profile,
     ...(status === undefined ? {} : {status}),
-    ...(contentType === undefined ? {} : {contentType}),
     bytes,
     kind,
     truncated,

@@ -1,23 +1,33 @@
-import {mkdir, readFile, readdir, writeFile} from 'node:fs/promises';
-import {dirname, extname, join, resolve} from 'node:path';
-import {GuestlistError} from './errors.js';
-import type {Finding, GuestlistReport} from './types.js';
+import {readdir} from 'node:fs/promises';
+import {extname, join, resolve} from 'node:path';
+import {hasErrorCode, readLimitedUtf8File, writePrivateFile} from '../utils/files.js';
+import {GatecrashError} from './errors.js';
+import type {Finding, GatecrashReport} from './types.js';
+
+const REPORT_MAXIMUM_BYTES = 25_000_000;
+const SUPPORTED_SCHEMAS = new Set([1, 2]);
 
 function markdownEscape(value: string): string {
-  return value.replaceAll('|', '\\|').replaceAll('\n', ' ');
+  return value
+    .replaceAll('\\', '\\\\')
+    .replaceAll('|', '\\|')
+    .replaceAll('`', "'")
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll(/\r?\n/g, ' ');
 }
 
 function percent(value: number): string {
   return `${Math.round(value * 100)}%`;
 }
 
-export function reportJson(report: GuestlistReport): string {
+export function reportJson(report: GatecrashReport): string {
   return `${JSON.stringify(report, null, 2)}\n`;
 }
 
-export function reportMarkdown(report: GuestlistReport): string {
+export function reportMarkdown(report: GatecrashReport): string {
   const lines = [
-    '# Guestlist report',
+    '# Gatecrash report',
     '',
     `Target: \`${report.run.targetOrigin}\``,
     '',
@@ -40,9 +50,9 @@ export function reportMarkdown(report: GuestlistReport): string {
       lines.push(
         `<details><summary><code>${finding.id}</code> ${markdownEscape(finding.method)} ${markdownEscape(finding.path)}</summary>`,
         '',
-        finding.reason,
+        markdownEscape(finding.reason),
         '',
-        ...finding.evidence.map((item) => `- ${item}`),
+        ...finding.evidence.map((item) => `- ${markdownEscape(item)}`),
         '',
         '</details>',
         '',
@@ -51,7 +61,7 @@ export function reportMarkdown(report: GuestlistReport): string {
   }
 
   lines.push(
-    'Guestlist reports response similarity. A result still needs manual verification against the application\'s intended access policy.',
+    'Gatecrash reports response similarity. A result still needs manual verification against the application\'s intended access policy.',
     '',
   );
   return lines.join('\n');
@@ -59,35 +69,78 @@ export function reportMarkdown(report: GuestlistReport): string {
 
 export function defaultReportPath(startedAt: string): string {
   const safeTime = startedAt.replaceAll(':', '').replaceAll('.', '-');
-  return join('.guestlist', 'runs', `${safeTime}.json`);
+  return join('.gatecrash', 'runs', `${safeTime}.json`);
 }
 
-export async function saveReport(report: GuestlistReport, path?: string): Promise<string> {
+export async function saveReport(report: GatecrashReport, path?: string): Promise<string> {
   const selectedPath = resolve(path ?? defaultReportPath(report.run.startedAt));
-  await mkdir(dirname(selectedPath), {recursive: true});
   const format = extname(selectedPath).toLowerCase() === '.md' ? 'markdown' : 'json';
-  await writeFile(
+  await writePrivateFile(
     selectedPath,
     format === 'markdown' ? reportMarkdown(report) : reportJson(report),
-    {encoding: 'utf8', mode: 0o600},
+    {replace: true},
   );
   return selectedPath;
 }
 
-function isReport(value: unknown): value is GuestlistReport {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isFinding(value: unknown): value is Finding {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return (
+    typeof value.id === 'string' && /^(?:GST|GTC)-[A-F0-9]{6}$/i.test(value.id) &&
+    typeof value.routeId === 'string' &&
+    typeof value.method === 'string' &&
+    typeof value.path === 'string' &&
+    typeof value.baseline === 'string' &&
+    typeof value.challenger === 'string' &&
+    typeof value.baselineStatus === 'number' &&
+    typeof value.challengerStatus === 'number' &&
+    typeof value.similarity === 'number' &&
+    value.similarity >= 0 && value.similarity <= 1 &&
+    typeof value.exact === 'boolean' &&
+    (value.confidence === 'high' || value.confidence === 'medium') &&
+    typeof value.reason === 'string' && value.reason.length <= 4_096 &&
+    Array.isArray(value.evidence) && value.evidence.length <= 100 &&
+    value.evidence.every((item) => typeof item === 'string' && item.length <= 4_096)
+  );
+}
+
+function isReport(value: unknown): value is GatecrashReport {
   if (typeof value !== 'object' || value === null) {
     return false;
   }
   const record = value as Record<string, unknown>;
-  return typeof record.schemaVersion === 'number' && Array.isArray(record.findings);
+  return (
+    typeof record.schemaVersion === 'number' &&
+    SUPPORTED_SCHEMAS.has(record.schemaVersion) &&
+    typeof record.toolVersion === 'string' &&
+    isRecord(record.run) &&
+    isRecord(record.config) &&
+    isRecord(record.summary) &&
+    Array.isArray(record.routes) &&
+    Array.isArray(record.findings) &&
+    record.findings.every(isFinding) &&
+    Array.isArray(record.skipped)
+  );
 }
 
-export async function loadReport(path: string): Promise<GuestlistReport> {
+export async function loadReport(path: string): Promise<GatecrashReport> {
   let contents: string;
   try {
-    contents = await readFile(resolve(path), 'utf8');
-  } catch {
-    throw new GuestlistError(`Report file not found: ${path}`);
+    contents = await readLimitedUtf8File(resolve(path), {
+      label: 'Report file',
+      maximumBytes: REPORT_MAXIMUM_BYTES,
+    });
+  } catch (error) {
+    if (hasErrorCode(error, 'ENOENT')) {
+      throw new GatecrashError(`Report file not found: ${path}`);
+    }
+    throw error;
   }
 
   try {
@@ -97,38 +150,41 @@ export async function loadReport(path: string): Promise<GuestlistReport> {
     }
     return value;
   } catch (error) {
-    throw new GuestlistError(`Could not read Guestlist report: ${path}`, {
+    throw new GatecrashError(`Could not read Gatecrash report: ${path}`, {
       hint: error instanceof Error ? error.message : String(error),
     });
   }
 }
 
-export async function latestReport(directory = join('.guestlist', 'runs')): Promise<string> {
+export async function latestReport(directory = join('.gatecrash', 'runs')): Promise<string> {
   let names: string[];
   try {
     names = await readdir(resolve(directory));
-  } catch {
-    throw new GuestlistError('No saved Guestlist report was found.', {
-      hint: 'Run guestlist check first, or pass --report.',
+  } catch (error) {
+    if (!hasErrorCode(error, 'ENOENT')) {
+      throw new GatecrashError('Could not read the saved-run directory.');
+    }
+    throw new GatecrashError('No saved Gatecrash report was found.', {
+      hint: 'Run gatecrash check first, or pass --report.',
     });
   }
 
   const reports = names.filter((name) => name.endsWith('.json')).sort().reverse();
   const latest = reports[0];
   if (latest === undefined) {
-    throw new GuestlistError('No saved Guestlist report was found.', {
-      hint: 'Run guestlist check first, or pass --report.',
+    throw new GatecrashError('No saved Gatecrash report was found.', {
+      hint: 'Run gatecrash check first, or pass --report.',
     });
   }
 
   return join(directory, latest);
 }
 
-export function findFinding(report: GuestlistReport, id: string): Finding {
+export function findFinding(report: GatecrashReport, id: string): Finding {
   const normalized = id.toUpperCase();
   const finding = report.findings.find((candidate) => candidate.id.toUpperCase() === normalized);
   if (finding === undefined) {
-    throw new GuestlistError(`Finding ${id} does not exist in this report.`);
+    throw new GatecrashError(`Finding ${id} does not exist in this report.`);
   }
   return finding;
 }
