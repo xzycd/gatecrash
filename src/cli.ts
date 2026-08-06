@@ -60,7 +60,15 @@ async function main(): Promise<void> {
       .argument('<capture>', 'HAR, URL list, or crawler JSONL file')
       .option('-c, --config <path>', 'configuration file', 'gatecrash.yml')
       .option('--allow-method <method...>', 'explicitly allow extra HTTP methods')
-      .option('--fail-on-review', 'exit with code 2 when a result needs review', false),
+      .addOption(
+        new Option('--fail-on <confidence>', 'exit with code 2 at this confidence or above')
+          .choices(['high', 'medium', 'low']),
+      )
+      .addOption(
+        new Option('--fail-on-review', 'deprecated alias for --fail-on low')
+          .default(false)
+          .conflicts('failOn'),
+      ),
   ).action(async (capture: string, options: CheckCommandOptions) => {
     await runCheckCommand(capture, options);
   });

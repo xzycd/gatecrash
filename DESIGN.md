@@ -158,10 +158,15 @@ sort first.
 
 ### Finding trace
 
-A review lead connects finding ID, confidence, request, baseline status,
-challenger status, similarity, and reason in that order. It is a trace, not a
-card. The explain view repeats the trace and adds the evidence list plus a clear
-manual-verification warning.
+A review lead connects finding ID, confidence, request, baseline status, one
+branch per session that reached the route, similarity, and reason in that
+order. It is a trace, not a card. The explain view repeats the trace and adds
+the evidence list plus a clear manual-verification warning.
+
+Confidence sets the rail colour, so the page reads worst-first without the
+reader having to compare percentages: coral for `high`, straw for `medium`,
+grey for `low`. A `low` lead is still drawn in full, because the reason it is
+weak is the thing the reader needs.
 
 ### Next action
 

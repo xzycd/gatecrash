@@ -15,12 +15,17 @@ describe('safe inspection', () => {
 
       expect(inspection).toMatchObject({
         captured: 5,
-        profiles: 3,
-        replays: 9,
+        // alice, bob, anonymous, and the credential-free control session.
+        profiles: 4,
+        replays: 12,
         baseline: 'alice',
+        control: true,
       });
       expect(inspection.routes).toHaveLength(3);
       expect(inspection.skipped).toHaveLength(2);
+      expect(inspection.families).toHaveLength(3);
+      // Three routes across four sessions at forty a second.
+      expect(inspection.estimatedMs).toBe(300);
 
       const serialized = JSON.stringify(inspection);
       expect(serialized).not.toContain('x-demo-user');

@@ -18,6 +18,7 @@ interface ReplayOptions {
   target: TargetConfig;
   compare: CompareConfig;
   concurrency: number;
+  signal?: AbortSignal;
   onResponse?: (completed: number, total: number, job: ReplayJob) => void;
 }
 
@@ -191,12 +192,16 @@ async function runWorkers<T, R>(
   items: T[],
   concurrency: number,
   worker: (item: T) => Promise<R>,
-): Promise<R[]> {
-  const results = new Array<R>(items.length);
+  signal?: AbortSignal,
+): Promise<Array<R | undefined>> {
+  const results = new Array<R | undefined>(items.length);
   let cursor = 0;
 
   const work = async (): Promise<void> => {
-    while (cursor < items.length) {
+    // Checked before claiming work rather than inside the request, so an
+    // interrupt stops the run at a request boundary and every reply already
+    // paid for is still in hand when the report is written.
+    while (cursor < items.length && signal?.aborted !== true) {
       const index = cursor;
       cursor += 1;
       const item = items[index];
@@ -215,6 +220,8 @@ export async function replayRoutes(
   profiles: ProfileConfig[],
   options: ReplayOptions,
 ): Promise<Map<string, InternalResponse[]>> {
+  // Route-major rather than profile-major, so an interrupted run leaves whole
+  // routes compared instead of every route missing its last session.
   const jobs = routes.flatMap((route) => profiles.map((profile) => ({route, profile})));
   const gate = new RateGate(options.target.requestsPerSecond);
   let completed = 0;
@@ -223,7 +230,7 @@ export async function replayRoutes(
     completed += 1;
     options.onResponse?.(completed, jobs.length, job);
     return response;
-  });
+  }, options.signal);
 
   const grouped = new Map<string, InternalResponse[]>();
   for (const [index, job] of jobs.entries()) {

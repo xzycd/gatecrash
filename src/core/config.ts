@@ -8,6 +8,7 @@ import type {
   ExcludeConfig,
   GatecrashConfig,
   ProfileConfig,
+  SampleConfig,
   TargetConfig,
 } from './types.js';
 
@@ -15,6 +16,9 @@ const CONFIG_MAXIMUM_BYTES = 1_000_000;
 const MAXIMUM_PROFILES = 64;
 const MAXIMUM_PROFILE_ENTRIES = 128;
 const PROFILE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$/;
+// Gatecrash runs a session of its own under this name, so a configured profile
+// sharing it would silently replace the run's only credential-free reference.
+export const CONTROL_PROFILE = 'control';
 const HEADER_NAME = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 const FORBIDDEN_PROFILE_HEADERS = new Set([
   'connection',
@@ -116,6 +120,18 @@ function asNumber(
   }
 
   return candidate;
+}
+
+function asBoolean(value: unknown, fallback: boolean, label: string): boolean {
+  if (value === undefined) {
+    return fallback;
+  }
+
+  if (typeof value !== 'boolean') {
+    throw new GatecrashError(`${label} must be true or false.`);
+  }
+
+  return value;
 }
 
 function asStringArray(value: unknown, fallback: string[], label: string): string[] {
@@ -314,6 +330,12 @@ function parseProfiles(
         hint: 'Use 1 to 32 letters, numbers, dots, underscores, or hyphens.',
       });
     }
+    if (name === CONTROL_PROFILE) {
+      throw new GatecrashError(`Profile name "${CONTROL_PROFILE}" is reserved.`, {
+        hint: `Gatecrash sends its own credential-free ${CONTROL_PROFILE} session. `
+          + 'Rename this profile, or set compare.control: false to turn that session off.',
+      });
+    }
     const profile = asRecord(value, `profiles.${name}`);
     allowKeys(profile, ['level', 'headers', 'cookies'], `profiles.${name}`);
     return {
@@ -348,7 +370,7 @@ function parseCompare(raw: UnknownRecord, profiles: ProfileConfig[]): CompareCon
   const source = raw.compare === undefined ? {} : asRecord(raw.compare, 'compare');
   allowKeys(
     source,
-    ['baseline', 'against', 'similarity_threshold', 'volatile_json_keys'],
+    ['baseline', 'against', 'control', 'similarity_threshold', 'volatile_json_keys'],
     'compare',
   );
   const profileNames = profiles.map((profile) => profile.name);
@@ -398,6 +420,17 @@ function parseCompare(raw: UnknownRecord, profiles: ProfileConfig[]): CompareCon
       DEFAULT_VOLATILE_JSON_KEYS,
       'compare.volatile_json_keys',
     ),
+    control: asBoolean(source.control, true, 'compare.control'),
+  };
+}
+
+function parseSample(raw: UnknownRecord): SampleConfig {
+  const source = raw.sample === undefined ? {} : asRecord(raw.sample, 'sample');
+  allowKeys(source, ['per_pattern'], 'sample');
+  return {
+    perPattern: Math.floor(
+      asNumber(source.per_pattern, 3, 'sample.per_pattern', {minimum: 0, maximum: 10_000}),
+    ),
   };
 }
 
@@ -420,7 +453,7 @@ export function parseConfig(
   options: ParseConfigOptions = {},
 ): GatecrashConfig {
   const raw = asRecord(value, 'config');
-  allowKeys(raw, ['target', 'profiles', 'compare', 'exclude'], 'config');
+  allowKeys(raw, ['target', 'profiles', 'compare', 'exclude', 'sample'], 'config');
   const target = parseTarget(raw);
   const profiles = parseProfiles(raw, environment, options.resolveEnvironment ?? true);
   return {
@@ -428,6 +461,7 @@ export function parseConfig(
     profiles,
     compare: parseCompare(raw, profiles),
     exclude: parseExclude(raw),
+    sample: parseSample(raw),
   };
 }
 
@@ -497,6 +531,15 @@ compare:
   baseline: admin
   against: [member, anonymous]
   similarity_threshold: 0.92
+  # Also send every route with no credentials at all. When that session gets
+  # the same body as the baseline, the route is public and there is no
+  # boundary to have crossed.
+  control: true
+
+# A capture of a paginated list is hundreds of rows of one endpoint. Send this
+# many members of each path family; 0 sends all of them.
+sample:
+  per_pattern: 3
 
 exclude:
   paths:

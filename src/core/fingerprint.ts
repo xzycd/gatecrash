@@ -50,6 +50,29 @@ const MAXIMUM_HTML_TAGS = 20_000;
 const MAXIMUM_STRUCTURE_ENTRIES = 20_000;
 const MAXIMUM_TOKENS = 20_000;
 const DEEP_MARKER = '<deep>';
+const VOLATILE_MARKER = '<volatile>';
+
+/**
+ * How many bytes of a value could distinguish one session's data from
+ * another's.
+ *
+ * `{"items":[],"total":0}` is what a fresh account gets from half the
+ * endpoints in a capture, and it is byte-identical for every caller alive. It
+ * used to reach the operator as the loudest thing the tool can say. Nothing
+ * here scores it: an empty string, a zero, a null, and a boolean can carry no
+ * identity, and neither can the markers this module substitutes in.
+ */
+function contentWeight(value: unknown): number {
+  if (typeof value === 'string') {
+    return value === '' || value === DEEP_MARKER || value === VOLATILE_MARKER
+      ? 0
+      : JSON.stringify(value).length;
+  }
+  if (typeof value === 'number' && Number.isFinite(value) && value !== 0) {
+    return String(value).length;
+  }
+  return 0;
+}
 
 function boundedAdd(target: Set<string>, value: string, limit: number): void {
   if (target.size < limit) {
@@ -179,8 +202,9 @@ function scalarType(value: unknown): string {
 function normalizeJson(
   value: unknown,
   volatileKeys: Set<string>,
-): {normalized: string; structure: Set<string>; tokens: Set<string>} {
+): {normalized: string; structure: Set<string>; tokens: Set<string>; contentBytes: number} {
   const structure = new Set<string>();
+  let contentBytes = 0;
 
   const clean = (item: unknown, path: string, depth: number): unknown => {
     boundedAdd(structure, `${path || '/'}:${scalarType(item)}`, MAXIMUM_STRUCTURE_ENTRIES);
@@ -205,7 +229,7 @@ function normalizeJson(
         const nextPath = `${path}/${key}`;
         if (volatileKeys.has(key.toLowerCase())) {
           boundedAdd(structure, `${nextPath}:volatile`, MAXIMUM_STRUCTURE_ENTRIES);
-          result[key] = '<volatile>';
+          result[key] = VOLATILE_MARKER;
         } else {
           result[key] = clean(child, nextPath, depth + 1);
         }
@@ -213,11 +237,12 @@ function normalizeJson(
       return result;
     }
 
+    contentBytes += contentWeight(item);
     return item;
   };
 
   const normalized = JSON.stringify(clean(value, '', 0));
-  return {normalized, structure, tokens: tokenize(normalized)};
+  return {normalized, structure, tokens: tokenize(normalized), contentBytes};
 }
 
 function binaryFingerprint(body: Uint8Array): string {
@@ -230,6 +255,7 @@ export function fingerprintResponse(input: FingerprintInput): InternalResponse {
   let normalized: string;
   let structure = new Set<string>();
   let tokens = new Set<string>();
+  let contentBytes = 0;
 
   if (kind === 'json') {
     const volatileKeys = new Set(input.volatileJsonKeys.map((key) => key.toLowerCase()));
@@ -237,17 +263,23 @@ export function fingerprintResponse(input: FingerprintInput): InternalResponse {
     normalized = json.normalized;
     structure = json.structure;
     tokens = json.tokens;
+    contentBytes = json.contentBytes;
   } else if (kind === 'html') {
     const html = htmlSignals(text);
     normalized = html.text;
     tokens = tokenize(normalized);
     structure = html.tags;
+    contentBytes = normalized.length;
   } else if (kind === 'text') {
     normalized = normalizeText(text);
     tokens = tokenize(normalized);
+    contentBytes = normalized.length;
   } else if (kind === 'binary') {
     normalized = binaryFingerprint(input.body);
     tokens = new Set([normalized]);
+    // The digest is a fixed 64 characters whatever it summarises, so the body
+    // itself is what says whether there was anything in it to summarise.
+    contentBytes = input.body.byteLength;
   } else {
     normalized = '';
   }
@@ -262,6 +294,7 @@ export function fingerprintResponse(input: FingerprintInput): InternalResponse {
     normalized,
     structure,
     tokens,
+    contentBytes,
   };
 }
 
@@ -276,6 +309,7 @@ export function errorResponse(profile: string, message: string, durationMs: numb
     normalized: '',
     structure: new Set(),
     tokens: new Set(),
+    contentBytes: 0,
   };
 }
 

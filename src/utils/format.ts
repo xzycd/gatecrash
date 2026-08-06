@@ -10,6 +10,17 @@ export function plural(count: number, singular: string, pluralValue = `${singula
   return `${count} ${count === 1 ? singular : pluralValue}`;
 }
 
+/** `a`, `a and b`, `a, b, and c`. */
+export function listOf(values: string[]): string {
+  if (values.length <= 1) {
+    return values[0] ?? '';
+  }
+  if (values.length === 2) {
+    return `${values[0]} and ${values[1]}`;
+  }
+  return `${values.slice(0, -1).join(', ')}, and ${values.at(-1)}`;
+}
+
 export function truncateMiddle(value: string, width: number): string {
   if (value.length <= width || width < 8) {
     return value.slice(0, Math.max(0, width));

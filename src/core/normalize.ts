@@ -108,9 +108,49 @@ function extensionExcluded(pathname: string, extensions: string[]): boolean {
   return extension !== undefined && extensions.includes(extension);
 }
 
+export interface RouteFamily {
+  method: string;
+  pattern: string;
+  matched: number;
+  replayed: number;
+}
+
 interface PrepareResult {
   routes: PreparedRoute[];
   skipped: SkippedRoute[];
+  families: RouteFamily[];
+}
+
+function familyKey(route: PreparedRoute): string {
+  return `${route.method}\n${route.pattern}\n${route.queryNames.join('&')}`;
+}
+
+/**
+ * Which members of a route family to actually send.
+ *
+ * A capture of a paginated list is two hundred rows of `/api/files/{int}`
+ * that differ only in an identifier the tool already declines to record. Every
+ * one of them costs a request per session, and at the default two per second a
+ * six-hundred-route capture is a quarter of an hour before it says anything.
+ *
+ * The picks are spread across the family rather than taken from the front,
+ * because the front of a capture is one page of one list, and an identifier
+ * that behaves differently is likelier to be at the far end of the range than
+ * next door to the first one.
+ */
+export function samplePositions(size: number, keep: number): number[] {
+  if (keep <= 0 || keep >= size) {
+    return Array.from({length: size}, (_, index) => index);
+  }
+  if (keep === 1) {
+    return [0];
+  }
+
+  const positions = new Set<number>();
+  for (let index = 0; index < keep; index += 1) {
+    positions.add(Math.round(index * (size - 1) / (keep - 1)));
+  }
+  return [...positions].sort((left, right) => left - right);
 }
 
 export function prepareRoutes(
@@ -118,6 +158,7 @@ export function prepareRoutes(
   origin: string,
   allowedMethods: Set<string>,
   exclude: ExcludeConfig,
+  perPattern = 0,
 ): PrepareResult {
   const routes: PreparedRoute[] = [];
   const skipped: SkippedRoute[] = [];
@@ -171,5 +212,54 @@ export function prepareRoutes(
     });
   }
 
-  return {routes, skipped};
+  // Families are reported whether or not sampling is on, because "these two
+  // hundred rows are one endpoint" is worth saying even when all two hundred
+  // are about to be sent.
+  const grouped = new Map<string, PreparedRoute[]>();
+  for (const route of routes) {
+    const key = familyKey(route);
+    grouped.set(key, [...grouped.get(key) ?? [], route]);
+  }
+
+  const kept: PreparedRoute[] = [];
+  const families: RouteFamily[] = [];
+  for (const members of grouped.values()) {
+    const ordered = [...members].sort((left, right) => left.path.localeCompare(right.path));
+    const positions = new Set(samplePositions(ordered.length, perPattern));
+    const first = ordered[0];
+    if (first === undefined) {
+      continue;
+    }
+
+    families.push({
+      method: first.method,
+      pattern: first.pattern,
+      matched: ordered.length,
+      replayed: Math.min(positions.size, ordered.length),
+    });
+
+    for (const [index, route] of ordered.entries()) {
+      if (positions.has(index)) {
+        kept.push(route);
+      } else {
+        skipped.push({
+          id: route.reportId,
+          method: route.method,
+          path: route.path,
+          reason: 'sampled',
+          detail: `${first.method} ${first.pattern} matched ${ordered.length} routes; `
+            + `${positions.size} were replayed.`,
+        });
+      }
+    }
+  }
+
+  // Capture order is what the operator sees in their proxy, and a report that
+  // reorders it for an internal grouping step is harder to follow back.
+  const order = new Map(routes.map((route, index) => [route.id, index]));
+  kept.sort((left, right) => (order.get(left.id) ?? 0) - (order.get(right.id) ?? 0));
+  families.sort((left, right) => right.matched - left.matched
+    || left.pattern.localeCompare(right.pattern));
+
+  return {routes: kept, skipped, families};
 }

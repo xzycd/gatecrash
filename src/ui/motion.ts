@@ -60,7 +60,12 @@ export function frame(
   const said = STAGES[progress.stage];
   const gap = ' '.repeat(Math.max(1, STAGE_COLUMN - said.length));
   const counts = progress.stage === 'replay' && total > 0 ? `${done}/${total}` : '';
-  const trail = [counts, terminalText(progress.detail, 60), duration(elapsedMs)]
+  // Elapsed answers "is it moving". Remaining answers "do I wait", which is
+  // the question a run held at two requests a second is actually raising.
+  const clock = progress.remainingMs !== undefined && progress.remainingMs >= 2_000
+    ? `${duration(elapsedMs)} ${g.sep} ${duration(progress.remainingMs)} left`
+    : duration(elapsedMs);
+  const trail = [counts, terminalText(progress.detail, 60), clock]
     .filter((part) => part !== '')
     .join(`  ${g.sep}  `);
 

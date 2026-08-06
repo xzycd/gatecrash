@@ -1,13 +1,13 @@
 // Every case here is something a target server, a capture file, or a saved
 // report can contain. Each one failed before the fix it names.
-import {mkdtemp, writeFile} from 'node:fs/promises';
+import {mkdtemp, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {describe, expect, it} from 'vitest';
 import {parseHar} from '../src/core/capture.js';
 import {fingerprintResponse} from '../src/core/fingerprint.js';
 import {displayPath, matchesPath} from '../src/core/normalize.js';
-import {reportMarkdown} from '../src/core/report.js';
+import {loadReport, reportMarkdown} from '../src/core/report.js';
 import {installCommand} from '../src/commands/update.js';
 import {readLimitedUtf8File} from '../src/utils/files.js';
 import {terminalText} from '../src/utils/security.js';
@@ -103,11 +103,18 @@ describe('terminal safety', () => {
 
 describe('markdown reports', () => {
   const report = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     toolVersion: '0.0.0',
     run: {id: 'r', startedAt: '', durationMs: 1, input: 'c.har', targetOrigin: 'https://app.example.test'},
-    config: {baseline: 'admin', profiles: [], allowedMethods: ['GET'], similarityThreshold: 0.92},
-    summary: {captured: 1, routes: 1, replays: 2, reviews: 1, blocked: 0, changed: 0, errors: 0, skipped: 0},
+    config: {
+      baseline: 'admin', profiles: [], control: true,
+      allowedMethods: ['GET'], similarityThreshold: 0.92, samplePerPattern: 3,
+    },
+    summary: {
+      captured: 1, skipped: 0, sampled: 0, routes: 1, findings: 1,
+      high: 1, medium: 0, low: 0, replays: 2, comparisons: 1,
+      reviews: 1, publicResults: 0, blocked: 0, changed: 0, errors: 0,
+    },
     routes: [],
     findings: [{
       id: 'GTC-A1B2C3',
@@ -117,9 +124,15 @@ describe('markdown reports', () => {
       // report as a working link pointing wherever the capture said.
       path: '/a/[click here](https://evil.example.test)',
       baseline: 'admin',
-      challenger: 'anonymous',
       baselineStatus: 200,
-      challengerStatus: 200,
+      // A profile name reaches the same table cell, and a configuration file is
+      // input too.
+      crossings: [{
+        challenger: '[x](https://evil.example.test/session)',
+        status: 200,
+        similarity: 1,
+        exact: true,
+      }],
       similarity: 1,
       exact: true,
       confidence: 'high',
@@ -129,10 +142,44 @@ describe('markdown reports', () => {
     skipped: [],
   } as unknown as GatecrashReport;
 
+  // A saved report is a file, and a file is something somebody can hand you.
+  // Most of what the explain view prints is wrapped; the method and the
+  // similarity are not, and an unbounded one is a row that runs off the edge.
+  it('refuses a saved finding carrying an unbounded label or an impossible status', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'gatecrash-hostile-'));
+    try {
+      const write = async (finding: Record<string, unknown>): Promise<string> => {
+        const path = join(directory, `${Math.abs(finding.n as number)}.json`);
+        await writeFile(path, JSON.stringify({
+          ...report,
+          findings: [{...report.findings[0], ...finding}],
+        }));
+        return path;
+      };
+
+      for (const [index, bad] of [
+        {method: 'G'.repeat(4_000)},
+        {path: '/'.repeat(4_000)},
+        {baseline: 'a'.repeat(300)},
+        {baselineStatus: 999_999_999},
+        {crossings: [{challenger: 'b'.repeat(300), status: 200, similarity: 1, exact: true}]},
+        {crossings: [{challenger: 'bob', status: 999_999_999, similarity: 1, exact: true}]},
+        {crossings: [{challenger: 'bob', status: 200.5, similarity: 1, exact: true}]},
+      ].entries()) {
+        const path = await write({...bad, n: index});
+        await expect(loadReport(path), JSON.stringify(bad).slice(0, 40))
+          .rejects.toThrowError(/Could not read/);
+      }
+    } finally {
+      await rm(directory, {recursive: true, force: true});
+    }
+  });
+
   it('escapes link and image syntax out of attacker-shaped values', () => {
     const markdown = reportMarkdown(report);
     expect(markdown).not.toContain('[click here](https://evil.example.test)');
     expect(markdown).not.toContain('![img](https://evil.example.test/pixel)');
+    expect(markdown).not.toContain('[x](https://evil.example.test/session)');
     expect(markdown).toContain('\\[click here\\]\\(https://evil.example.test\\)');
   });
 });
