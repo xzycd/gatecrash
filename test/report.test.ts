@@ -25,7 +25,7 @@ describe('private reports', () => {
       expect(contents).not.toContain('contentType');
       expect(contents).not.toContain('application/json');
       expect(contents).not.toContain('x-demo-user');
-      expect((await loadReport(destination)).schemaVersion).toBe(2);
+      expect((await loadReport(destination)).schemaVersion).toBe(3);
     } finally {
       await lab.close();
       await rm(directory, {recursive: true, force: true});

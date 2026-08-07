@@ -28,7 +28,7 @@ export async function runDemoCommand(options: DemoCommandOptions): Promise<void>
       },
     );
     const result = await runWithProgress(execute, {plain: options.plain || format !== 'terminal'});
-    writeResult(result, options.format, {plain: options.plain, failOnReview: false});
+    writeResult(result, options.format, {plain: options.plain});
   } finally {
     await lab.close();
   }

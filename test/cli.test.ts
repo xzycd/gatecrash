@@ -43,9 +43,9 @@ describe('CLI', () => {
   it('prints a machine-readable demo report without terminal noise', async () => {
     const {stdout, stderr} = await run(['demo', '--format', 'json', '--no-save']);
     expect(stderr).toBe('');
-    const report = JSON.parse(stdout) as {schemaVersion: number; summary: {reviews: number}};
-    expect(report.schemaVersion).toBe(2);
-    expect(report.summary.reviews).toBe(2);
+    const report = JSON.parse(stdout) as {schemaVersion: number; summary: {findings: number}};
+    expect(report.schemaVersion).toBe(3);
+    expect(report.summary.findings).toBe(2);
   });
 
   it('inspects a capture without requiring profile secrets', async () => {
@@ -79,7 +79,8 @@ describe('CLI', () => {
       ]);
       expect(stderr).toBe('');
       const inspection = JSON.parse(stdout) as {replays: number; routes: Array<{path: string}>};
-      expect(inspection.replays).toBe(2);
+      // One route, two profiles, and the credential-free control session.
+      expect(inspection.replays).toBe(3);
       expect(inspection.routes[0]?.path).toBe('/api/me?token');
       expect(stdout).not.toContain('private');
       expect(stdout).not.toContain('MISSING_ADMIN_TOKEN');
@@ -148,11 +149,16 @@ describe('CLI', () => {
       expect(stderr).toBe('');
       const report = JSON.parse(stdout) as {
         summary: {replays: number; reviews: number; blocked: number};
-        findings: Array<{challenger: string; path: string}>;
+        findings: Array<{crossings: Array<{challenger: string}>; path: string}>;
       };
-      expect(report.summary).toMatchObject({replays: 3, reviews: 1, blocked: 1});
+      // Four requests now: admin, member, anonymous, and the control session.
+      // Two comparisons, because the control is the reference the challengers
+      // are measured against rather than one of the sessions being judged.
+      expect(report.summary).toMatchObject({
+        replays: 4, comparisons: 2, reviews: 1, blocked: 1, findings: 1, high: 1,
+      });
       expect(report.findings).toEqual([{
-        challenger: 'member',
+        crossings: [{challenger: 'member', status: 200, similarity: 1, exact: true}],
         path: '/api/account/admin?trace',
         id: expect.any(String),
         routeId: expect.any(String),
@@ -160,7 +166,6 @@ describe('CLI', () => {
         confidence: 'high',
         baseline: 'admin',
         baselineStatus: 200,
-        challengerStatus: 200,
         similarity: 1,
         exact: true,
         reason: expect.any(String),

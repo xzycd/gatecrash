@@ -1,7 +1,7 @@
 import {basename} from 'node:path';
 import {loadCapture} from './capture.js';
 import {prepareRoutes} from './normalize.js';
-import {selectedProfiles} from './run.js';
+import {estimatedRunMs, selectedProfiles} from './run.js';
 import type {
   CapturedRequest,
   GatecrashConfig,
@@ -20,13 +20,16 @@ export function inspectRequests(
     config.target.origin,
     allowedMethods,
     config.exclude,
+    config.sample.perPattern,
   );
 
+  const replays = prepared.routes.length * profiles.length;
   return {
     input,
     targetOrigin: config.target.origin,
     baseline: config.compare.baseline,
     challengers: [...config.compare.against],
+    control: config.compare.control,
     allowedMethods: [...allowedMethods].sort(),
     captured: requests.length,
     routes: prepared.routes.map(({reportId, method, path, pattern, queryNames}) => ({
@@ -36,9 +39,14 @@ export function inspectRequests(
       pattern,
       queryNames,
     })),
+    families: prepared.families,
     skipped: prepared.skipped,
     profiles: profiles.length,
-    replays: prepared.routes.length * profiles.length,
+    replays,
+    // The number that decides whether this is a command you run now or after
+    // lunch. At the default two requests a second, a six-hundred-route capture
+    // across three sessions is a quarter of an hour.
+    estimatedMs: estimatedRunMs(replays, config.target.requestsPerSecond),
   };
 }
 

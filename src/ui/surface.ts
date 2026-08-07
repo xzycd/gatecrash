@@ -6,7 +6,13 @@
  * is what makes `--plain`, a pipe, `NO_COLOR=1`, and a terminal that cannot
  * draw a box the same code path with different escapes.
  */
-import type {CheckResult, Finding, InspectionResult, RunProgress} from '../core/types.js';
+import type {
+  CheckResult,
+  Confidence,
+  Finding,
+  InspectionResult,
+  RunProgress,
+} from '../core/types.js';
 import {wantsAnimation} from '../brand.js';
 import {colorDepth, glyphs, Ink, wantsLinks, width} from './ink.js';
 import {Ticker} from './motion.js';
@@ -42,14 +48,14 @@ export function writeWelcome(stream: Surface = process.stdout, plain = false): v
 
 export function writeReport(
   result: CheckResult,
-  options: {stream?: Surface; plain?: boolean; failOnReview?: boolean} = {},
+  options: {stream?: Surface; plain?: boolean; failOn?: Confidence} = {},
 ): void {
   const stream = options.stream ?? process.stdout;
   stream.write(renderReport(
     result,
     inkFor(stream, options.plain ?? false),
     width(stream),
-    options.failOnReview ?? false,
+    options.failOn,
   ));
 }
 

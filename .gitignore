@@ -9,5 +9,6 @@ coverage/
 *.tgz
 
 # Local notes for coding agents. Keep project guidance in tracked docs.
+AGENTS.md
 CLAUDE.md
 others.md

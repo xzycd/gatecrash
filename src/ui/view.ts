@@ -14,16 +14,18 @@
  * colour and no links, and every escape falls out of the same code path.
  */
 import {COMMAND_NAME, DESCRIPTION, logo, TAGLINE} from '../brand.js';
+import {CONTROL_PROFILE} from '../core/config.js';
 import {errorMessage, GatecrashError} from '../core/errors.js';
 import type {
   CheckResult,
   ComparisonOutcome,
+  Confidence,
   Finding,
   GatecrashReport,
   InspectionResult,
   RouteReport,
 } from '../core/types.js';
-import {plural} from '../utils/format.js';
+import {formatDuration, listOf, plural} from '../utils/format.js';
 import {terminalText} from '../utils/security.js';
 import {VERSION} from '../version.js';
 import {
@@ -53,15 +55,25 @@ const TONES: Record<ComparisonOutcome, string> = {
   inconclusive: 'unclear',
   changed: 'changed',
   same: 'changed',
+  public: 'dim',
   blocked: 'blocked',
 };
 
-const SEVERITY: ComparisonOutcome[] = ['review', 'error', 'inconclusive', 'changed', 'same', 'blocked'];
+const SEVERITY: ComparisonOutcome[] = [
+  'review',
+  'error',
+  'inconclusive',
+  'changed',
+  'same',
+  'public',
+  'blocked',
+];
 
 /**
  * Every mark is distinct without colour, because colour is allowed to support
  * a label here and never to carry it. A reader with `NO_COLOR=1` still has to
- * be able to tell a door that held from one that did not.
+ * be able to tell a door that held from one that did not, and a door that was
+ * never shut from either.
  */
 const MARKS: Record<string, [string, string]> = {
   baseline: ['●', 'o'],
@@ -69,8 +81,15 @@ const MARKS: Record<string, [string, string]> = {
   blocked: ['✓', '+'],
   same: ['=', '='],
   changed: ['≠', '~'],
+  public: ['○', '-'],
   inconclusive: ['?', '?'],
   error: ['×', 'x'],
+};
+
+const CONFIDENCE_TONES: Record<Confidence, string> = {
+  high: 'review',
+  medium: 'unclear',
+  low: 'changed',
 };
 
 function markFor(name: string, glyph: Glyphs): string {
@@ -96,16 +115,62 @@ function safe(value: string): string {
  * the report without spending a line on a box.
  */
 function ruleLine(label: string, subject: string, meta: string, ink: Ink, span: number): string {
-  // The subject is the only part that can give. The label says which command
-  // is speaking and the meta says what it did, and a header that drops either
-  // to keep an origin whole has kept the wrong thing.
+  // The subject is the first part to give. The label says which command is
+  // speaking and the meta says what it did, and a header that drops either to
+  // keep an origin whole has kept the wrong thing.
   const room = span - label.length - meta.length - 10;
   const shown = subject === '' ? '' : shorten(subject, Math.max(8, room), ink);
   const head = shown === ''
     ? ink.paint(label, 'accent', 'bold')
     : `${ink.paint(label, 'accent', 'bold')}  ${ink.paint(shown, 'dim')}`;
-  const fill = Math.max(2, span - visible(head) - meta.length - 8);
-  return `  ${head} ${ink.paint(ink.glyph.line.repeat(fill), 'dim')}  ${ink.paint(meta, 'dim')}`;
+  // Once the subject has given everything it has, the meta gives too, because
+  // the alternative is a header that runs past the edge. `fill` was floored at
+  // two, which held the rule together and let the line overflow instead: at
+  // sixty columns a header with four counts in it ran sixteen characters past.
+  // Callers with droppable counts should drop whole ones before it comes to
+  // this, so a number is never shown cut in half.
+  const fitted = shorten(meta, Math.max(0, span - visible(head) - 10), ink);
+  const fill = Math.max(2, span - visible(head) - visible(fitted) - 8);
+  return `  ${head} ${ink.paint(ink.glyph.line.repeat(fill), 'dim')}  ${ink.paint(fitted, 'dim')}`;
+}
+
+/** Whole counts, dropped from the end until what is left fits. */
+function fitMeta(parts: string[], separator: string, room: number): string {
+  for (let count = parts.length; count > 1; count -= 1) {
+    const candidate = parts.slice(0, count).join(separator);
+    if (candidate.length <= room) {
+      return candidate;
+    }
+  }
+  return parts[0] ?? '';
+}
+
+/**
+ * Painted parts packed into lines, wrapping at whole parts.
+ *
+ * A count broken across a line break stops being a count, and a count sliced
+ * by `shorten` stops being true, so the break goes between them. Continuation
+ * lines are indented to the column the first one started at.
+ */
+function packParts(parts: string[], separator: string, lead: string, span: number): string[] {
+  const indent = ' '.repeat(visible(lead));
+  const lines: string[] = [];
+  let current = '';
+
+  for (const part of parts) {
+    const candidate = current === '' ? part : current + separator + part;
+    const prefix = lines.length === 0 ? lead : indent;
+    if (current !== '' && visible(prefix) + visible(candidate) > span) {
+      lines.push(prefix + current);
+      current = part;
+    } else {
+      current = candidate;
+    }
+  }
+  if (current !== '') {
+    lines.push((lines.length === 0 ? lead : indent) + current);
+  }
+  return lines;
 }
 
 /**
@@ -114,35 +179,49 @@ function ruleLine(label: string, subject: string, meta: string, ink: Ink, span: 
  * If everything is boxed then nothing is.
  */
 function alarm(report: GatecrashReport, ink: Ink, span: number): string[] {
-  const exact = report.findings.filter((finding) => finding.exact);
-  if (exact.length === 0) {
+  // High confidence only. The box used to fire on any byte-identical match,
+  // which meant it fired on `{"items":[],"total":0}` — the reply half the
+  // endpoints in a capture give a fresh account, identical for every caller
+  // alive. A box that goes off for that is a box nobody reads.
+  const high = report.findings.filter((finding) => finding.confidence === 'high');
+  if (high.length === 0) {
     return [];
   }
 
-  const sessions = [...new Set(exact.map((finding) => finding.challenger))].map(safe);
-  const named = sessions.slice(0, 3).join(', ')
-    + (sessions.length > 3 ? ` and ${sessions.length - 3} more` : '');
-  const body = `${plural(exact.length, 'route')} returned a byte-identical successful response to `
-    + `${named}. Check each against the access policy the application is supposed to enforce, `
-    + 'then treat what is left as a finding.';
+  const sessions = [...new Set(high.flatMap((finding) =>
+    finding.crossings.map((crossing) => crossing.challenger)))].map(safe);
+  const named = sessions.length > 3
+    ? `${sessions.slice(0, 3).join(', ')} and ${sessions.length - 3} more`
+    : listOf(sessions);
+  const body = `${plural(high.length, 'route')} returned a byte-identical successful response to `
+    + `${named}, and that response carries data specific to ${safe(report.config.baseline)}. `
+    + 'Check each against the access policy the application is supposed to enforce, then treat '
+    + 'what is left as a finding.';
 
   const wrapped = wrap(body, span - 8).map((line) => ink.paint(line, 'review'));
   return [...panel('EXACT MATCH', wrapped, ink, 'review', span), ''];
 }
 
-/** One sentence naming the worst thing in the run, in plain English. */
+/**
+ * One sentence naming the worst thing in the run, in plain English.
+ *
+ * Every count here is of routes, and says so. The old version counted exact
+ * findings and called them sessions, so a five-route run against two sessions
+ * opened with "5 sessions received responses they should have had to earn."
+ */
 export function headline(report: GatecrashReport): string {
   const {summary} = report;
-  const exact = report.findings.filter((finding) => finding.exact).length;
-  if (exact > 0) {
-    return exact === 1
-      ? '1 session received a response it should have had to earn.'
-      : `${exact} sessions received responses they should have had to earn.`;
+  if (summary.high > 0) {
+    return `${plural(summary.high, 'route')} returned data belonging to `
+      + `${report.config.baseline} to a session that should not have had it.`;
   }
-  if (summary.reviews > 0) {
-    return summary.reviews === 1
-      ? '1 result is close enough to the baseline to be worth checking.'
-      : `${summary.reviews} results are close enough to the baseline to be worth checking.`;
+  if (summary.medium > 0) {
+    return `${plural(summary.medium, 'route')} came back close enough to the baseline to be `
+      + 'worth checking.';
+  }
+  if (summary.low > 0) {
+    return `${plural(summary.low, 'route')} matched, but on responses too empty to prove `
+      + 'anything either way.';
   }
   if (summary.errors > 0) {
     return `${plural(summary.errors, 'request')} failed, so those routes were never compared.`;
@@ -172,11 +251,60 @@ function cell(
   return {text: `${status} ${markFor(outcome, ink.glyph)}`, tone: TONES[outcome]};
 }
 
-function orderedRoutes(report: GatecrashReport): RouteReport[] {
-  return [...report.routes].sort((left, right) => {
-    const rank = SEVERITY.indexOf(worstOutcome(left)) - SEVERITY.indexOf(worstOutcome(right));
-    return rank === 0 ? left.path.localeCompare(right.path) : rank;
-  });
+/**
+ * A row of the map.
+ *
+ * One route, unless several routes are the same endpoint with a different
+ * identifier in it — a capture of a paginated list is two hundred of those,
+ * and printing them one per line is how the map stopped being something you
+ * read. The family is shown by its pattern, carrying the worst result any
+ * member of it produced.
+ */
+interface MapRow {
+  method: string;
+  label: string;
+  count: number;
+  route: RouteReport;
+  outcome: ComparisonOutcome;
+}
+
+function mapRows(report: GatecrashReport): MapRow[] {
+  const grouped = new Map<string, RouteReport[]>();
+  for (const route of report.routes) {
+    const key = `${route.method}\n${route.pattern}`;
+    grouped.set(key, [...grouped.get(key) ?? [], route]);
+  }
+
+  const rows: MapRow[] = [];
+  for (const members of grouped.values()) {
+    // The member that decides the row is the worst one, so folding a family
+    // can only ever promote a result up the page, never bury one.
+    const ordered = [...members].sort((left, right) =>
+      SEVERITY.indexOf(worstOutcome(left)) - SEVERITY.indexOf(worstOutcome(right))
+      || left.path.localeCompare(right.path));
+    const worst = ordered[0];
+    if (worst === undefined) {
+      continue;
+    }
+    rows.push({
+      method: worst.method,
+      label: members.length === 1 ? worst.path : worst.pattern,
+      count: members.length,
+      route: worst,
+      outcome: worstOutcome(worst),
+    });
+  }
+
+  return rows.sort((left, right) =>
+    SEVERITY.indexOf(left.outcome) - SEVERITY.indexOf(right.outcome)
+    || left.label.localeCompare(right.label));
+}
+
+/** Sessions with columns: the baseline and its challengers, never the control. */
+function mapProfiles(report: GatecrashReport): string[] {
+  return report.config.profiles
+    .filter(({name}) => name !== CONTROL_PROFILE)
+    .map(({name}) => name);
 }
 
 // Past this the map has stopped being something you read and started being
@@ -192,6 +320,7 @@ function legend(ink: Ink, span: number): string[] {
     ['review', 'review'],
     ['blocked', 'blocked'],
     ['changed', 'changed'],
+    ['public', 'dim'],
     ['inconclusive', 'unclear'],
   ];
   const separator = ink.paint(`  ${g.sep}  `, 'dim');
@@ -222,38 +351,45 @@ function legend(ink: Ink, span: number): string[] {
  * table.
  */
 function accessMap(report: GatecrashReport, ink: Ink, span: number): string[] {
-  const profiles = report.config.profiles.map(({name}) => name);
+  const profiles = mapProfiles(report);
+  const rows = mapRows(report);
   const stacked = span < 78 || profiles.length > 4;
-  const shown = orderedRoutes(report).slice(0, stacked ? MAP_ROWS_NARROW : MAP_ROWS_WIDE);
-  const hidden = report.routes.length - shown.length;
+  const shown = rows.slice(0, stacked ? MAP_ROWS_NARROW : MAP_ROWS_WIDE);
+  const hidden = rows.length - shown.length;
   const g = ink.glyph;
+  const folded = rows.some((row) => row.count > 1);
 
   const lines = [ruleLine(
     'access map',
     '',
-    `${plural(report.summary.routes, 'route')} ${g.sep} ${plural(profiles.length, 'session')}`,
+    `${plural(rows.length, folded ? 'endpoint' : 'route')} ${g.sep} `
+    + `${plural(profiles.length, 'session')}`,
     ink,
     span,
   ), ''];
 
+  const tally = (row: MapRow): string => row.count === 1 ? '' : ` ×${row.count}`;
+
   if (stacked) {
-    for (const route of shown) {
-      const tone = TONES[worstOutcome(route)];
+    for (const row of shown) {
+      const tone = TONES[row.outcome];
       const bar = `  ${rail(ink, tone)} `;
-      lines.push(`${bar}${ink.paint(safe(route.method), 'dim')} `
-        + shorten(safe(route.path), Math.max(20, span - INDENT - 6), ink));
+      lines.push(`${bar}${ink.paint(safe(row.method), 'dim')} `
+        + shorten(safe(row.label), Math.max(20, span - INDENT - 8), ink)
+        + ink.paint(tally(row), 'dim'));
       const cells = profiles.map((profile) => {
-        const {text, tone: cellTone} = cell(report, route, profile, ink);
+        const {text, tone: cellTone} = cell(report, row.route, profile, ink);
         return `${ink.paint(shorten(safe(profile), 14, ink), 'dim')} ${ink.paint(text, cellTone)}`;
       });
       lines.push(`${bar}  ${cells.join(ink.paint(`  ${g.sep} `, 'dim'))}`);
     }
   } else {
     const cellSpan = Math.max(10, Math.min(14, Math.floor((span - 36) / profiles.length)));
-    // The request column hugs the longest route it actually has to hold, so a
+    // The request column hugs the longest label it actually has to hold, so a
     // run of short paths does not leave a stripe of empty table between the
     // path and the statuses that belong to it.
-    const longest = Math.max(7, ...shown.map((route) => route.method.length + route.path.length + 1));
+    const longest = Math.max(7, ...shown.map((row) =>
+      row.method.length + row.label.length + tally(row).length + 1));
     const routeSpan = Math.max(24, Math.min(longest + 2, span - INDENT - cellSpan * profiles.length));
     const header = profiles
       .map((profile) => pad(ink.paint(
@@ -263,21 +399,26 @@ function accessMap(report: GatecrashReport, ink: Ink, span: number): string[] {
       .join('');
     lines.push(`  ${' '.repeat(2)}${pad(ink.paint('request', 'dim'), routeSpan)}${header}`);
 
-    for (const route of shown) {
-      const tone = TONES[worstOutcome(route)];
-      const label = `${safe(route.method)} ${safe(route.path)}`;
+    for (const row of shown) {
+      const tone = TONES[row.outcome];
+      const label = `${safe(row.method)} ${safe(row.label)}`;
       const cells = profiles
         .map((profile) => {
-          const {text, tone: cellTone} = cell(report, route, profile, ink);
+          const {text, tone: cellTone} = cell(report, row.route, profile, ink);
           return pad(ink.paint(text, cellTone), cellSpan);
         })
         .join('');
-      lines.push(`  ${rail(ink, tone)} ${pad(shorten(label, routeSpan - 1, ink), routeSpan)}${cells}`);
+      const shownLabel = shorten(label, routeSpan - 1 - tally(row).length, ink)
+        + ink.paint(tally(row), 'dim');
+      lines.push(`  ${rail(ink, tone)} ${pad(shownLabel, routeSpan)}${cells}`);
     }
   }
 
   if (hidden > 0) {
-    lines.push(ink.paint(`    ${hidden} more ${hidden === 1 ? 'route is' : 'routes are'} in the saved report`, 'dim'));
+    lines.push(ink.paint(
+      `    ${hidden} more ${hidden === 1 ? 'row is' : 'rows are'} in the saved report`,
+      'dim',
+    ));
   }
   lines.push('', ...legend(ink, span), '');
   return lines;
@@ -290,12 +431,13 @@ function accessMap(report: GatecrashReport, ink: Ink, span: number): string[] {
  */
 function findingBlock(finding: Finding, ink: Ink, span: number): string[] {
   const g = ink.glyph;
-  const bar = `  ${rail(ink, 'review')} `;
+  const tone = CONFIDENCE_TONES[finding.confidence];
+  const bar = `  ${rail(ink, tone)} `;
   const match = finding.exact ? 'exact' : `${Math.round(finding.similarity * 100)}%`;
-  const head = `${bar}${gauge(finding.similarity, 'review', ink)}`
-    + `${ink.paint(padStart(match, 6), 'review', 'bold')}`
+  const head = `${bar}${gauge(finding.similarity, tone, ink)}`
+    + `${ink.paint(padStart(match, 6), tone, 'bold')}`
     + `  ${ink.paint(safe(finding.id), 'rule')}  ${safe(finding.method)} `;
-  const label = ink.paint(finding.confidence === 'high' ? 'review' : 'review, weaker', 'review');
+  const label = ink.paint(finding.confidence, tone);
   // Measured rather than guessed. A constant here was right at a hundred
   // columns and pushed the row two characters past the edge at sixty, which is
   // the width where an overhang actually costs you a line.
@@ -303,18 +445,25 @@ function findingBlock(finding: Finding, ink: Ink, span: number): string[] {
   const left = head + shorten(safe(finding.path), Math.max(12, room), ink);
   const lines = [left + ' '.repeat(Math.max(1, span - visible(left) - visible(label))) + label];
 
-  const crossing = `${safe(finding.baseline)} ${finding.baselineStatus} ${g.arrow} `
-    + `${safe(finding.challenger)} ${finding.challengerStatus}`;
-  lines.push(`${bar}${ink.paint(g.tee, 'dim')} ${crossing}`);
-  for (const chunk of wrap(safe(finding.reason), span - INDENT - 10)) {
-    lines.push(`${bar}${ink.paint(g.pipe, 'dim')}   ${ink.paint(chunk, 'dim')}`);
+  // Every session that got through, on one branch each. The old block held one
+  // session, so a route open to four of them was four blocks with the same
+  // path at the top and the next route pushed off the screen underneath.
+  const shown = finding.crossings.slice(0, 4);
+  for (const crossing of shown) {
+    lines.push(`${bar}${ink.paint(g.tee, 'dim')} ${safe(finding.baseline)} `
+      + `${finding.baselineStatus} ${ink.paint(g.arrow, 'dim')} `
+      + `${safe(crossing.challenger)} ${crossing.status}`
+      + ink.paint(crossing.exact ? '' : `  ${Math.round(crossing.similarity * 100)}%`, 'dim'));
   }
-  lines.push(`${bar}${ink.paint(g.elbow, 'dim')} ${ink.paint(
-    finding.exact
-      ? 'the normalized response bodies are identical'
-      : `the normalized response bodies match by ${Math.round(finding.similarity * 100)}%`,
-    'dim',
-  )}`);
+  if (finding.crossings.length > shown.length) {
+    lines.push(`${bar}${ink.paint(g.tee, 'dim')} `
+      + ink.paint(`and ${finding.crossings.length - shown.length} more`, 'dim'));
+  }
+
+  for (const [index, chunk] of wrap(safe(finding.reason), span - INDENT - 6).entries()) {
+    const branch = index === 0 ? ink.paint(g.elbow, 'dim') : ' ';
+    lines.push(`${bar}${branch} ${ink.paint(chunk, 'dim')}`);
+  }
 
   lines.push('');
   return lines;
@@ -337,13 +486,22 @@ function allClear(report: GatecrashReport, ink: Ink, span: number): string[] {
   return lines;
 }
 
-/** A proportional bar of the run, then the counts it is made of. */
-function summaryLine(report: GatecrashReport, ink: Ink, span = 18): string[] {
+/**
+ * A proportional bar of the run, then the counts it is made of.
+ *
+ * Two lines, because there are two things being counted and they do not share
+ * a denominator. The old single line read `180 routes · 188 review · 172
+ * blocked`, mixing routes, comparisons, and skipped capture entries with
+ * nothing to say which was which — and more reviews than routes is a number
+ * that makes a reader stop trusting the rest of the page.
+ */
+function summaryLine(report: GatecrashReport, ink: Ink, width: number, span = 18): string[] {
   const {summary} = report;
   const counts: Array<[string, number, string]> = [
     ['review', summary.reviews, 'review'],
     ['error', summary.errors, 'error'],
     ['changed', summary.changed, 'changed'],
+    ['public', summary.publicResults, 'dim'],
     ['blocked', summary.blocked, 'blocked'],
   ];
   const total = Math.max(counts.reduce((sum, [, count]) => sum + count, 0), 1);
@@ -363,16 +521,36 @@ function summaryLine(report: GatecrashReport, ink: Ink, span = 18): string[] {
   }
   bar += ink.paint(ink.glyph.off.repeat(span - used), used === 0 ? 'blocked' : 'dim');
 
-  const parts = [ink.paint(plural(summary.routes, 'route'), 'dim')];
+  const separator = ink.paint(` ${ink.glyph.sep} `, 'dim');
+  const comparisons = [ink.paint(plural(summary.comparisons, 'comparison'), 'dim')];
   for (const [name, count, tone] of counts) {
     if (count > 0) {
-      parts.push(ink.paint(`${count} ${name}`, tone));
+      comparisons.push(ink.paint(`${count} ${name}`, tone));
     }
   }
-  if (summary.skipped > 0) {
-    parts.push(ink.paint(`${summary.skipped} skipped`, 'dim'));
+
+  const routes = [ink.paint(plural(summary.routes, 'route replayed', 'routes replayed'), 'dim')];
+  for (const [name, count] of [
+    ['high', summary.high],
+    ['medium', summary.medium],
+    ['low', summary.low],
+  ] as const) {
+    if (count > 0) {
+      routes.push(ink.paint(`${count} ${name}`, CONFIDENCE_TONES[name]));
+    }
   }
-  return [`  ${bar}  ${parts.join(ink.paint(` ${ink.glyph.sep} `, 'dim'))}`];
+  if (summary.sampled > 0) {
+    routes.push(ink.paint(`${summary.sampled} sampled out`, 'dim'));
+  }
+  const otherwiseSkipped = summary.skipped - summary.sampled;
+  if (otherwiseSkipped > 0) {
+    routes.push(ink.paint(`${otherwiseSkipped} skipped`, 'dim'));
+  }
+
+  return [
+    ...packParts(comparisons, separator, `  ${bar}  `, width),
+    ...packParts(routes, separator, `  ${' '.repeat(span)}  `, width),
+  ];
 }
 
 /**
@@ -380,14 +558,30 @@ function summaryLine(report: GatecrashReport, ink: Ink, span = 18): string[] {
  * with forty routes and one review gives you a wall of output and a `2`, and
  * no way to tell which line produced it.
  */
-function exitLine(report: GatecrashReport, ink: Ink, failOnReview: boolean): string[] {
-  if (!failOnReview || report.summary.reviews === 0) {
+function exitLine(report: GatecrashReport, ink: Ink, span: number, failOn?: Confidence): string[] {
+  if (failOn === undefined) {
     return [];
   }
-  const named = report.findings.slice(0, 4).map((finding) => safe(finding.id)).join(', ');
-  const rest = report.findings.length > 4 ? `, and ${report.findings.length - 4} more` : '';
-  return [`  ${ink.paint('exit 2', 'review', 'bold')}  `
-    + ink.paint(`${plural(report.summary.reviews, 'result')} to review: ${named}${rest}`, 'dim')];
+  const failing = findingsAtLeast(report, failOn);
+  if (failing.length === 0) {
+    return [];
+  }
+  const named = failing.slice(0, 4).map((finding) => safe(finding.id)).join(', ');
+  const rest = failing.length > 4 ? `, and ${failing.length - 4} more` : '';
+  const lead = `  ${ink.paint('exit 2', 'review', 'bold')}  `;
+  const body = `${plural(failing.length, 'route')} at ${failOn} confidence or above: `
+    + `${named}${rest}`;
+  return wrap(body, Math.max(20, span - visible(lead)))
+    .map((chunk, index) => (index === 0 ? lead : ' '.repeat(visible(lead)))
+      + ink.paint(chunk, 'dim'));
+}
+
+const CONFIDENCE_RANK: Record<Confidence, number> = {high: 0, medium: 1, low: 2};
+
+/** Findings at or above a confidence, which is what a CI gate is asked about. */
+export function findingsAtLeast(report: GatecrashReport, floor: Confidence): Finding[] {
+  return report.findings.filter((finding) =>
+    CONFIDENCE_RANK[finding.confidence] <= CONFIDENCE_RANK[floor]);
 }
 
 function footer(result: CheckResult, ink: Ink, span: number): string[] {
@@ -411,21 +605,38 @@ function footer(result: CheckResult, ink: Ink, span: number): string[] {
 // the saved report, and the line below says so.
 const MAX_FINDING_BLOCKS = 6;
 
-export function renderReport(result: CheckResult, ink: Ink, span: number, failOnReview = false): string {
+export function renderReport(
+  result: CheckResult,
+  ink: Ink,
+  span: number,
+  failOn?: Confidence,
+): string {
   const {report} = result;
   const g = ink.glyph;
   const meta = [
     plural(report.summary.routes, 'route'),
-    plural(report.config.profiles.length, 'session'),
+    plural(mapProfiles(report).length, 'session'),
     duration(report.run.durationMs),
   ].join(` ${g.sep} `);
 
   const lines = ['', ruleLine(COMMAND_NAME, safe(report.run.targetOrigin), meta, ink, span), ''];
+
+  if (result.interrupted === true) {
+    lines.push(`  ${rail(ink, 'unclear')} ${ink.paint('interrupted', 'unclear', 'bold')}`);
+    for (const chunk of wrap(
+      'Stopped before the plan finished. Everything below is the part that ran.',
+      span - INDENT,
+    )) {
+      lines.push(`  ${rail(ink, 'unclear')} ${ink.paint(chunk, 'dim')}`);
+    }
+    lines.push('');
+  }
+
   lines.push(...alarm(report, ink, span));
 
   const lead = headline(report);
   if (lead !== '') {
-    lines.push(`  ${ink.paint(lead, 'bold')}`, '');
+    lines.push(...wrap(lead, span - INDENT).map((chunk) => `  ${ink.paint(chunk, 'bold')}`), '');
   }
 
   lines.push(...accessMap(report, ink, span));
@@ -445,8 +656,8 @@ export function renderReport(result: CheckResult, ink: Ink, span: number, failOn
     }
   }
 
-  lines.push(...summaryLine(report, ink));
-  lines.push(...exitLine(report, ink, failOnReview));
+  lines.push(...summaryLine(report, ink, span));
+  lines.push(...exitLine(report, ink, span, failOn));
   lines.push(...footer(result, ink, span));
   lines.push('');
   return page(lines);
@@ -454,11 +665,12 @@ export function renderReport(result: CheckResult, ink: Ink, span: number, failOn
 
 export function renderInspection(inspection: InspectionResult, ink: Ink, span: number): string {
   const g = ink.glyph;
-  const meta = [
+  const meta = fitMeta([
+    `${plural(inspection.replays, 'request')} planned`,
     plural(inspection.routes.length, 'route'),
     plural(inspection.profiles, 'session'),
-    `${plural(inspection.replays, 'request')} planned`,
-  ].join(` ${g.sep} `);
+  ], ` ${g.sep} `, span - 30);
+  const sampled = inspection.skipped.filter(({reason}) => reason === 'sampled').length;
 
   const lines = [
     '',
@@ -474,19 +686,53 @@ export function renderInspection(inspection: InspectionResult, ink: Ink, span: n
     lines.push(`  ${rail(ink, 'blocked')} ${ink.paint(chunk, 'dim')}`);
   }
   lines.push('');
-  lines.push(`  ${ink.paint('baseline', 'dim')}  ${safe(inspection.baseline)} `
-    + `${ink.paint(g.arrow, 'dim')} ${inspection.challengers.map(safe).join(', ')}`);
-  lines.push(`  ${ink.paint('methods ', 'dim')}  ${inspection.allowedMethods.join(', ')}`);
-  lines.push(`  ${ink.paint('capture ', 'dim')}  ${safe(inspection.input)}`);
+  const against = `${safe(inspection.baseline)} ${g.arrow} `
+    + inspection.challengers.map(safe).join(', ')
+    + (inspection.control ? `, and a credential-free ${CONTROL_PROFILE} session` : '');
+  for (const [index, chunk] of wrap(against, span - 14).entries()) {
+    lines.push(`  ${ink.paint(index === 0 ? 'baseline' : '        ', 'dim')}  `
+      + (index === 0 ? chunk : ink.paint(chunk, 'dim')));
+  }
+  // A label, two spaces, and whatever is left of the line. The value gives,
+  // because the label is what makes the block scannable.
+  const field = (label: string, value: string): string =>
+    `  ${ink.paint(pad(label, 8), 'dim')}  ${shorten(value, Math.max(12, span - 12), ink)}`;
+  lines.push(field('methods', inspection.allowedMethods.join(', ')));
+  lines.push(field('capture', safe(inspection.input)));
+  // The number that decides whether this command runs now or after lunch. It
+  // was computable from the two lines above it all along and never shown, so
+  // the way to find out a run took a quarter of an hour was to start it.
+  lines.push(field(
+    'cost',
+    `${plural(inspection.replays, 'request')} ${g.sep} about ${formatDuration(inspection.estimatedMs)}`,
+  ));
   lines.push('');
 
-  lines.push(ruleLine('in scope', '', plural(inspection.routes.length, 'route'), ink, span), '');
-  for (const route of inspection.routes.slice(0, 12)) {
-    lines.push(`  ${rail(ink, 'changed')} ${ink.paint(safe(route.method), 'dim')} `
-      + shorten(safe(route.path), Math.max(20, span - INDENT - 8), ink));
+  lines.push(ruleLine(
+    'in scope',
+    '',
+    `${plural(inspection.families.length, 'endpoint')} ${g.sep} `
+    + plural(inspection.routes.length, 'route'),
+    ink,
+    span,
+  ), '');
+  for (const family of inspection.families.slice(0, 12)) {
+    const tally = family.matched === 1 ? '' : ` ×${family.matched}`;
+    const held = family.matched - family.replayed;
+    lines.push(`  ${rail(ink, 'changed')} ${ink.paint(safe(family.method), 'dim')} `
+      + shorten(safe(family.pattern), Math.max(20, span - INDENT - 26), ink)
+      + ink.paint(tally, 'dim')
+      + (held > 0 ? ink.paint(`  ${family.replayed} sampled`, 'unclear') : ''));
   }
-  if (inspection.routes.length > 12) {
-    lines.push(ink.paint(`    ${inspection.routes.length - 12} more`, 'dim'));
+  if (inspection.families.length > 12) {
+    lines.push(ink.paint(`    ${inspection.families.length - 12} more`, 'dim'));
+  }
+  if (sampled > 0) {
+    lines.push('', ...wrap(
+      `${sampled} routes are held back because another member of the same path family is `
+      + 'being sent. Set sample.per_pattern: 0 to send every one of them.',
+      span - INDENT,
+    ).map((chunk) => ink.paint(`  ${chunk}`, 'dim')));
   }
 
   if (inspection.skipped.length > 0) {
@@ -498,11 +744,17 @@ export function renderInspection(inspection: InspectionResult, ink: Ink, span: n
     lines.push('', ink.paint(`  ${inspection.skipped.length} skipped: ${detail}`, 'dim'));
   }
 
+  // Same rule as the report footer: the note is an aside and goes first, and
+  // the capture name gives only after that. A capture called something long
+  // used to push this line nine characters past a sixty-column terminal.
+  const note = 'to send them';
+  const head = `  ${ink.paint(g.chevron, 'accent')} `;
+  const command = `${COMMAND_NAME} check `
+    + shorten(safe(inspection.input), Math.max(12, span - visible(head) - 16), ink);
+  const room = visible(head) + visible(command) + 3 + note.length <= span;
   lines.push(
     '',
-    `  ${ink.paint(g.chevron, 'accent')} `
-    + `${ink.paint(`${COMMAND_NAME} check ${safe(inspection.input)}`, 'accent')}`
-    + `   ${ink.paint('to send them', 'dim')}`,
+    head + ink.paint(command, 'accent') + (room ? `   ${ink.paint(note, 'dim')}` : ''),
     '',
   );
   return page(lines);
@@ -510,24 +762,32 @@ export function renderInspection(inspection: InspectionResult, ink: Ink, span: n
 
 export function renderFinding(finding: Finding, reportPath: string, ink: Ink, span: number): string {
   const g = ink.glyph;
+  const tone = CONFIDENCE_TONES[finding.confidence];
   const match = finding.exact ? 'exact' : `${Math.round(finding.similarity * 100)}%`;
+  const reached = listOf(finding.crossings.map((crossing) =>
+    `${safe(crossing.challenger)} ${crossing.status}`));
   const lines = [
     '',
     ruleLine(`${COMMAND_NAME} explain`, safe(finding.id), `${finding.confidence} confidence`, ink, span),
     '',
-    `  ${rail(ink, 'review')} ${gauge(finding.similarity, 'review', ink)}`
-    + `${ink.paint(padStart(match, 6), 'review', 'bold')}  ${safe(finding.method)} `
+    `  ${rail(ink, tone)} ${gauge(finding.similarity, tone, ink)}`
+    + `${ink.paint(padStart(match, 6), tone, 'bold')}  `
+    + `${shorten(safe(finding.method), 12, ink)} `
     + shorten(safe(finding.path), Math.max(18, span - 30), ink),
-    `  ${rail(ink, 'review')} ${ink.paint(g.tee, 'dim')} ${safe(finding.baseline)} `
-    + `${finding.baselineStatus} ${ink.paint(g.arrow, 'dim')} ${safe(finding.challenger)} `
-    + `${finding.challengerStatus}`,
   ];
+  for (const [index, chunk] of wrap(
+    `${safe(finding.baseline)} ${finding.baselineStatus} ${g.arrow} ${reached}`,
+    span - INDENT - 4,
+  ).entries()) {
+    lines.push(`  ${rail(ink, tone)} `
+      + `${index === 0 ? ink.paint(g.tee, 'dim') : ' '} ${chunk}`);
+  }
 
   for (const [index, item] of finding.evidence.entries()) {
     const last = index === finding.evidence.length - 1;
     const branch = last ? g.elbow : g.tee;
     for (const [chunk, line] of wrap(safe(item), span - INDENT - 8).entries()) {
-      lines.push(`  ${rail(ink, 'review')} `
+      lines.push(`  ${rail(ink, tone)} `
         + `${chunk === 0 ? ink.paint(branch, 'dim') : ' '} ${ink.paint(line, 'dim')}`);
     }
   }
@@ -544,7 +804,7 @@ export function renderFinding(finding: Finding, reportPath: string, ink: Ink, sp
   )) {
     lines.push(`  ${ink.paint(chunk, 'dim')}`);
   }
-  lines.push('', ink.paint(`  from ${safe(reportPath)}`, 'dim'), '');
+  lines.push('', ink.paint(`  from ${shorten(safe(reportPath), span - 8, ink)}`, 'dim'), '');
   return page(lines);
 }
 

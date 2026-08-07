@@ -23,6 +23,11 @@ as `check`, but it does not resolve environment secrets or send traffic.
   and `Content-Type`.
 - Session headers come from profile configuration. `Host`, `Content-Length`,
   raw `Cookie`, hop-by-hop headers, and control characters are rejected.
+- The `control` session sends the route's own captured headers and nothing
+  else: no profile headers, no cookies, no credential of any kind. It obeys
+  every rule the configured profiles do — same origin check, same method
+  allowlist, same rate gate, same response cap. `control` is a reserved profile
+  name so a configuration cannot shadow it.
 - Capture files stop at 100 MB or 100,000 entries, and a single captured request
   body stops at 8 MB. A run stops before network work when its route and profile
   plan exceeds 100,000 replays.
@@ -107,6 +112,16 @@ json` or `--format markdown`.
 Wide terminals use profile columns. Narrow terminals use stacked route tracks.
 Non-TTY output is plain text. JSON stdout contains JSON only.
 
+A map row is one endpoint, not one route. Routes sharing a normalized pattern
+fold into a single row carrying the worst result any member produced, marked
+`×N`, so folding a family can only promote a result up the page and never bury
+one. A family of one shows its concrete path.
+
+Counts on one line share one denominator and say which. The summary is two
+lines because comparisons and routes are different things being counted, and
+`180 routes · 188 review` is a number that makes a reader stop trusting the
+page.
+
 No view may exceed the width it was given, at any width. The subject in a header
 and the aside in a footer are what give way; the label, the counts, and the next
 command are not.
@@ -132,8 +147,9 @@ largest of four sizes that fits and replaced by a plain line below forty
 columns. Block letters that run past the edge do not degrade, they shred.
 
 A severity rail down the left is what makes a block read as one result. A box is
-used exactly once, for the byte-identical match, which is the one result that is
-not a judgement call. If everything is boxed then nothing is.
+used exactly once, for a byte-identical match on a response that carries data
+specific to the baseline, which is the one result that is not a judgement call.
+If everything is boxed then nothing is.
 
 Lime is the brand and never means a severity. The severity ramp runs red, ember,
 straw, grey, green, and nothing on it is fully saturated.
@@ -165,13 +181,58 @@ configured volatile keys are replaced. HTML uses tag structure and visible
 text. A result is called `review`, not `vulnerable`. The default similarity
 threshold is `0.92`.
 
-Exit codes are `0` for a completed run, `1` for an operational failure, and `2`
-for review results when `--fail-on-review` is active.
+Refusing to judge severity is not the same as refusing to judge relevance. The
+tool ranks and explains; it still never says `vulnerable`. Three rules do the
+ranking, and each exists because the version without it flagged everything:
+
+- **A baseline response has to be able to prove something.** A body carrying
+  fewer than 16 bytes of non-empty scalar content is not discriminating: `[]`,
+  `{}`, and `{"items":[],"total":0}` are byte-identical for every caller alive,
+  so an identical copy reaching a second session is evidence of nothing. Such a
+  match is reported at `low` confidence with the byte count that decided it,
+  never suppressed.
+- **A credential-free control session runs every route by default.** It is the
+  reference the challengers are measured against, not one of the sessions being
+  judged, so it produces no comparison of its own and gets no column in the
+  access map. When it receives the same body as the baseline and that body is
+  not discriminating, the route is `public` and there was no boundary to cross.
+- **The same observation escalates when the body has something in it.** A
+  control session receiving a discriminating baseline response is the strongest
+  statement the tool can make, so it becomes a crossing on the finding at
+  `high` confidence, and it can be the only crossing there is. Suppressing it
+  as "public" would hide the missing-authentication bug the demo lab ships to
+  demonstrate.
+
+Confidence is `high` for an exact match on a discriminating response, `medium`
+for a near match on one, and `low` when the baseline could not discriminate.
+Only `high` gets the box.
+
+Findings are keyed by route, not by route and session. One route open to four
+sessions is one finding naming four crossings.
+
+A capture is mostly the same endpoint with a different identifier in it, so
+routes are grouped by their normalized pattern and `sample.per_pattern` members
+of each family are sent, defaulting to 3 and disabled with `0`. Picks are
+spread across the family rather than taken from the front. Held-back routes are
+recorded as skipped with reason `sampled`, counted in the summary, and named in
+`inspect`; sampling is never silent.
+
+Exit codes are `0` for a completed run, `1` for an operational failure, `2` for
+findings at or above `--fail-on`, and `130` for a run the operator interrupted.
+`--fail-on-review` is kept as an alias for `--fail-on low`; on its own it
+failed on every near match, and on a real application every authenticated
+endpoint produces one.
+
+`SIGINT` stops the run at a request boundary and writes a report covering what
+came back. A route missing any response is left out entirely rather than
+compared against a gap, and `run.interrupted` says the report is partial.
 
 ## Regression gate
 
 Run `npm run check` and `npm run demo`. A network or privacy fix gets a fixture
-that fails without it. A fix for a hostile response gets one that fails without
+that fails without it. A change to what the tool is willing to call a finding
+gets one too, and it asserts on the tier rather than only on the count: the
+classifier that flagged everything also passed every test that only counted. A fix for a hostile response gets one that fails without
 it too, and asserts on the bound rather than only on the absence of a crash.
 Inspect output must remain free of session values, captured headers, request
 bodies, query values, and local directory paths.

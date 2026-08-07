@@ -9,6 +9,7 @@ const compare: CompareConfig = {
   against: ['bob'],
   similarityThreshold: 0.92,
   volatileJsonKeys: ['requestId'],
+  control: false,
 };
 const alice: ProfileConfig = {name: 'alice', level: 10, headers: {}, cookies: {}};
 const bob: ProfileConfig = {name: 'bob', level: 10, headers: {}, cookies: {}};

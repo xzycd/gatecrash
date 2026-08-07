@@ -19,9 +19,8 @@ const finding: Finding = {
   method: 'GET',
   path: '/api/account/alice',
   baseline: 'admin',
-  challenger: 'anonymous',
   baselineStatus: 200,
-  challengerStatus: 200,
+  crossings: [{challenger: 'anonymous', status: 200, similarity: 1, exact: true}],
   similarity: 1,
   exact: true,
   confidence: 'high',
@@ -36,7 +35,7 @@ const finding: Finding = {
 const result: CheckResult = {
   reportPath: '/tmp/report.json',
   report: {
-    schemaVersion: 2,
+    schemaVersion: 3,
     toolVersion: '0.6.0',
     run: {
       id: 'run-1',
@@ -48,12 +47,16 @@ const result: CheckResult = {
     config: {
       baseline: 'admin',
       profiles: [{name: 'admin', level: 100}, {name: 'anonymous', level: 0}],
+      control: false,
       allowedMethods: ['GET'],
       similarityThreshold: 0.92,
+      samplePerPattern: 3,
     },
     summary: {
-      captured: 2, routes: 2, replays: 4, reviews: 1,
-      blocked: 1, changed: 0, errors: 0, skipped: 0,
+      captured: 2, skipped: 0, sampled: 0,
+      routes: 2, findings: 1, high: 1, medium: 0, low: 0,
+      replays: 4, comparisons: 2, reviews: 1, publicResults: 0,
+      blocked: 1, changed: 0, errors: 0,
     },
     routes: [
       {
@@ -114,7 +117,9 @@ describe('the check report', () => {
     expect(lines[0]).toContain('gatecrash');
     expect(lines[0]).toContain('https://app.example.test');
     expect(output).toContain('EXACT MATCH');
-    expect(output).toContain('1 session received a response it should have had to earn.');
+    expect(flat(output)).toContain(
+      '1 route returned data belonging to admin to a session that should not have had it.',
+    );
   });
 
   // The panel is the one thing on the screen that is not a judgement call. If
@@ -122,14 +127,30 @@ describe('the check report', () => {
   it('boxes nothing when no response came back identical', () => {
     const softened = structuredClone(result);
     softened.report.findings = [{...finding, exact: false, similarity: 0.95, confidence: 'medium'}];
+    softened.report.summary.high = 0;
+    softened.report.summary.medium = 1;
     expect(renderReport(softened, plain, 100)).not.toContain('EXACT MATCH');
     expect(renderReport(softened, plain, 100)).toContain('95%');
+  });
+
+  // An empty collection is byte-identical for every caller alive, so a copy of
+  // it reaching a second session is not the thing the box is reserved for.
+  it('leaves the box shut for an exact match on a response with nothing in it', () => {
+    const weak = structuredClone(result);
+    weak.report.findings = [{...finding, confidence: 'low'}];
+    weak.report.summary.high = 0;
+    weak.report.summary.low = 1;
+    const output = renderReport(weak, plain, 100);
+    expect(output).not.toContain('EXACT MATCH');
+    expect(flat(output)).toContain('too empty to prove anything either way');
   });
 
   it('says so plainly when nothing crossed', () => {
     const clear = structuredClone(result);
     clear.report.findings = [];
-    clear.report.summary.reviews = 0;
+    clear.report.summary = {
+      ...clear.report.summary, findings: 0, high: 0, medium: 0, low: 0, reviews: 0,
+    };
     const output = renderReport(clear, plain, 100);
     expect(output).toContain('no crossings');
     expect(output).not.toContain('EXACT MATCH');
@@ -169,8 +190,19 @@ describe('the check report', () => {
   });
 
   it('explains the exit code only when one is going to be set', () => {
-    expect(renderReport(result, plain, 100, true)).toContain('exit 2');
-    expect(renderReport(result, plain, 100, false)).not.toContain('exit 2');
+    expect(renderReport(result, plain, 100, 'high')).toContain('exit 2');
+    expect(renderReport(result, plain, 100)).not.toContain('exit 2');
+  });
+
+  // The gate has to be able to pass, or a team deletes it. A run holding only
+  // weak matches is not a failing run at `--fail-on high`.
+  it('holds the gate shut only for findings at or above the confidence asked for', () => {
+    const weak = structuredClone(result);
+    weak.report.findings = [{...finding, confidence: 'low'}];
+    weak.report.summary.high = 0;
+    weak.report.summary.low = 1;
+    expect(renderReport(weak, plain, 100, 'high')).not.toContain('exit 2');
+    expect(renderReport(weak, plain, 100, 'low')).toContain('exit 2');
   });
 
   it('names the report it saved and the command that opens a result', () => {
@@ -193,17 +225,26 @@ describe('headline', () => {
   it('reaches for the failure count when nothing matched', () => {
     const failing = structuredClone(result.report);
     failing.findings = [];
-    failing.summary.reviews = 0;
-    failing.summary.errors = 3;
+    failing.summary = {...failing.summary, high: 0, medium: 0, low: 0, reviews: 0, errors: 3};
     expect(headline(failing)).toContain('3 requests failed');
   });
 
   it('says nothing when there is nothing to say', () => {
     const clean = structuredClone(result.report);
     clean.findings = [];
-    clean.summary.reviews = 0;
-    clean.summary.errors = 0;
+    clean.summary = {...clean.summary, high: 0, medium: 0, low: 0, reviews: 0, errors: 0};
     expect(headline(clean)).toBe('');
+  });
+
+  // It counted exact findings and called them sessions, so a five-route run
+  // against two sessions opened by claiming five sessions had got through.
+  it('counts routes and says routes', () => {
+    const many = structuredClone(result.report);
+    many.config.profiles = [{name: 'admin', level: 100}, {name: 'anonymous', level: 0}];
+    many.summary = {...many.summary, high: 5, medium: 0, low: 0};
+    expect(headline(many)).toContain('5 routes');
+    expect(headline(many)).not.toContain('session received');
+    expect(headline(many)).not.toContain('5 sessions');
   });
 });
 
@@ -213,6 +254,7 @@ describe('the other views', () => {
     targetOrigin: 'https://app.example.test',
     baseline: 'admin',
     challengers: ['member', 'anonymous'],
+    control: true,
     allowedMethods: ['GET', 'HEAD', 'OPTIONS'],
     captured: 4,
     routes: [{
@@ -221,6 +263,12 @@ describe('the other views', () => {
       path: '/api/account/alice',
       pattern: '/api/account/alice',
       queryNames: [],
+    }],
+    families: [{
+      method: 'GET',
+      pattern: '/api/account/alice',
+      matched: 1,
+      replayed: 1,
     }],
     skipped: [{
       id: 'route-0002',
@@ -231,6 +279,7 @@ describe('the other views', () => {
     }],
     profiles: 3,
     replays: 3,
+    estimatedMs: 1_500,
   };
 
   it('promises nothing was sent, and says what would be', () => {
@@ -239,6 +288,36 @@ describe('the other views', () => {
     expect(output).toContain('3 requests planned');
     expect(output).toContain('1 skipped: 1 unsafe-method');
     expect(output).toContain('gatecrash check session.har');
+    expect(widest(output)).toBeLessThanOrEqual(100);
+  });
+
+  // The way to find out a run took a quarter of an hour used to be to start it.
+  it('says what the plan costs in requests and in time before any of it runs', () => {
+    const slow = {...inspection, replays: 1_800, estimatedMs: 900_000};
+    const output = renderInspection(slow, plain, 100);
+    expect(output).toContain('1800 requests');
+    expect(output).toContain('900 s');
+  });
+
+  it('names the control session and how many routes sampling holds back', () => {
+    const folded: InspectionResult = {
+      ...inspection,
+      families: [{method: 'GET', pattern: '/api/files/{int}', matched: 40, replayed: 3}],
+      skipped: Array.from({length: 37}, (_, index) => ({
+        id: `route-${index}`,
+        method: 'GET',
+        path: `/api/files/${index}`,
+        reason: 'sampled' as const,
+        detail: 'GET /api/files/{int} matched 40 routes; 3 were replayed.',
+      })),
+    };
+    const output = renderInspection(folded, plain, 100);
+    expect(output).toContain('/api/files/{int}');
+    expect(output).toContain('×40');
+    expect(output).toContain('3 sampled');
+    expect(flat(output)).toContain('37 routes are held back');
+    expect(flat(output)).toContain('sample.per_pattern: 0');
+    expect(output).toContain('control');
     expect(widest(output)).toBeLessThanOrEqual(100);
   });
 
@@ -273,6 +352,77 @@ describe('the other views', () => {
     for (const span of [60, 70, 80, 100, 120]) {
       const output = renderWelcome(plain, span, {depth: 0, animate: false, room: span});
       expect(widest(output)).toBeLessThanOrEqual(span);
+    }
+  });
+
+  /**
+   * A layout constant that happens to be right at a hundred columns is a bug
+   * at sixty. The fixtures above are comfortable ones; these are not, and
+   * every value in them is something a real capture can produce. Five of the
+   * lines this covers were running past the edge, two of them since before
+   * this file existed: the summary counts and the exit line were never handed
+   * a terminal width at all.
+   */
+  it('keeps every view inside the terminal at every width, on hostile input', () => {
+    const path = '/api/v2/organizations/{uuid}/members/{uuid}/permissions/effective';
+    const wide: Finding = {
+      ...finding,
+      path,
+      confidence: 'high',
+      crossings: ['control', 'anonymous', 'member', 'auditor', 'contractor'].map((challenger) => ({
+        challenger, status: 200, similarity: 1, exact: true,
+      })),
+      reason: "A session carrying no credentials received administrator's response in full. "
+        + 'control, anonymous, member, auditor, and contractor reached this route.',
+    };
+    const crowded = structuredClone(result);
+    crowded.report.run.targetOrigin = 'https://really-quite-long-hostname.internal.example.test';
+    crowded.report.config.baseline = 'administrator';
+    crowded.report.config.profiles = [
+      {name: 'administrator', level: 100}, {name: 'member', level: 10},
+      {name: 'anonymous', level: 0}, {name: 'control', level: -1},
+    ];
+    // Every count non-zero at once, which is the widest the summary ever gets.
+    crowded.report.summary = {
+      captured: 900, skipped: 868, sampled: 866, routes: 32, findings: 12,
+      high: 8, medium: 3, low: 1, replays: 128, comparisons: 64, reviews: 40,
+      publicResults: 4, blocked: 18, changed: 2, errors: 2,
+    };
+    crowded.report.findings = Array.from({length: 12}, (_, index) => ({
+      ...wide, id: `GTC-00000${index}`,
+    }));
+    crowded.reportPath = '/home/somebody/work/client-engagement/.gatecrash/runs/2026-08-06.json';
+
+    const folded: InspectionResult = {
+      ...inspection,
+      input: 'a-rather-long-capture-filename-for-a-big-crawl.har',
+      targetOrigin: crowded.report.run.targetOrigin,
+      baseline: 'administrator',
+      challengers: ['member', 'anonymous', 'auditor'],
+      allowedMethods: ['GET', 'HEAD', 'OPTIONS', 'PATCH', 'DELETE'],
+      families: [{method: 'GET', pattern: path, matched: 220, replayed: 3}],
+      skipped: [{
+        id: 'route-0003', method: 'GET', path: '/api/v2/notifications/1000',
+        reason: 'sampled', detail: 'matched 220 routes; 3 were replayed.',
+      }],
+      replays: 160,
+      estimatedMs: 900_000,
+    };
+
+    for (const ink of [plain, ascii, colour]) {
+      for (const span of [60, 61, 62, 63, 66, 72, 77, 78, 80, 92, 100, 110, 120]) {
+        for (const failOn of [undefined, 'high', 'low'] as const) {
+          for (const interrupted of [false, true]) {
+            const output = renderReport({...crowded, interrupted}, ink, span, failOn);
+            expect(widest(output), `report ${span} ${failOn} ${interrupted}`)
+              .toBeLessThanOrEqual(span);
+          }
+        }
+        expect(widest(renderInspection(folded, ink, span)), `inspect ${span}`)
+          .toBeLessThanOrEqual(span);
+        expect(widest(renderFinding(wide, folded.input, ink, span)), `finding ${span}`)
+          .toBeLessThanOrEqual(span);
+      }
     }
   });
 });

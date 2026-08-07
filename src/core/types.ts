@@ -20,6 +20,7 @@ export interface CompareConfig {
   against: string[];
   similarityThreshold: number;
   volatileJsonKeys: string[];
+  control: boolean;
 }
 
 export interface ExcludeConfig {
@@ -27,11 +28,16 @@ export interface ExcludeConfig {
   extensions: string[];
 }
 
+export interface SampleConfig {
+  perPattern: number;
+}
+
 export interface GatecrashConfig {
   target: TargetConfig;
   profiles: ProfileConfig[];
   compare: CompareConfig;
   exclude: ExcludeConfig;
+  sample: SampleConfig;
 }
 
 export interface CapturedRequest {
@@ -59,7 +65,7 @@ export interface SkippedRoute {
   id: string;
   method: string;
   path: string;
-  reason: 'duplicate' | 'excluded' | 'out-of-scope' | 'unsafe-method';
+  reason: 'duplicate' | 'excluded' | 'out-of-scope' | 'sampled' | 'unsafe-method';
   detail: string;
 }
 
@@ -79,10 +85,17 @@ export interface InternalResponse extends ResponseRecord {
   normalized: string;
   structure: Set<string>;
   tokens: Set<string>;
+  /**
+   * How many bytes of this body could tell one session's data from another's.
+   * An empty collection is identical for every caller, so an identical copy of
+   * it arriving at a second session is not evidence about anything.
+   */
+  contentBytes: number;
 }
 
 export type ComparisonOutcome =
   | 'review'
+  | 'public'
   | 'blocked'
   | 'changed'
   | 'same'
@@ -110,31 +123,56 @@ export interface RouteReport {
   comparisons: Comparison[];
 }
 
+export type Confidence = 'high' | 'medium' | 'low';
+
+export interface FindingCrossing {
+  challenger: string;
+  status: number;
+  similarity: number;
+  exact: boolean;
+}
+
+/**
+ * One route, every session that got through it. Keyed by route rather than by
+ * (route, session): a route open to four sessions is one thing to go and fix,
+ * and printing it four times buries the next route under it.
+ */
 export interface Finding {
   id: string;
   routeId: string;
   method: string;
   path: string;
   baseline: string;
-  challenger: string;
   baselineStatus: number;
-  challengerStatus: number;
+  crossings: FindingCrossing[];
+  /** The strongest crossing, which is the one that decides the confidence. */
   similarity: number;
   exact: boolean;
-  confidence: 'high' | 'medium';
+  confidence: Confidence;
   reason: string;
   evidence: string[];
 }
 
 export interface ReportSummary {
+  // Capture entries.
   captured: number;
+  skipped: number;
+  sampled: number;
+  // Routes.
   routes: number;
+  findings: number;
+  high: number;
+  medium: number;
+  low: number;
+  // Requests sent.
   replays: number;
+  // Comparisons: one per (route, challenger) pair.
+  comparisons: number;
   reviews: number;
+  publicResults: number;
   blocked: number;
   changed: number;
   errors: number;
-  skipped: number;
 }
 
 export interface GatecrashReport {
@@ -146,12 +184,16 @@ export interface GatecrashReport {
     durationMs: number;
     input: string;
     targetOrigin: string;
+    /** Set when the operator stopped the run before the plan finished. */
+    interrupted?: boolean;
   };
   config: {
     baseline: string;
     profiles: Array<{name: string; level: number}>;
+    control: boolean;
     allowedMethods: string[];
     similarityThreshold: number;
+    samplePerPattern: number;
   };
   summary: ReportSummary;
   routes: RouteReport[];
@@ -173,6 +215,8 @@ export interface RunProgress {
   replays: number;
   baseline: string;
   challengers: string[];
+  /** Milliseconds left at the configured rate, or undefined before replay. */
+  remainingMs?: number;
 }
 
 export interface CheckOptions {
@@ -181,11 +225,15 @@ export interface CheckOptions {
   save: boolean;
   outputPath?: string;
   onProgress?: (progress: RunProgress) => void;
+  /** Resolves when the operator interrupts, so the run stops and still reports. */
+  signal?: AbortSignal;
 }
 
 export interface CheckResult {
   report: GatecrashReport;
   reportPath?: string;
+  /** True when the operator interrupted and the report covers part of the plan. */
+  interrupted?: boolean;
 }
 
 export interface InspectionResult {
@@ -193,6 +241,7 @@ export interface InspectionResult {
   targetOrigin: string;
   baseline: string;
   challengers: string[];
+  control: boolean;
   allowedMethods: string[];
   captured: number;
   routes: Array<{
@@ -202,7 +251,16 @@ export interface InspectionResult {
     pattern: string;
     queryNames: string[];
   }>;
+  /** In-scope routes folded by pattern, so 200 file IDs read as one family. */
+  families: Array<{
+    method: string;
+    pattern: string;
+    matched: number;
+    replayed: number;
+  }>;
   skipped: SkippedRoute[];
   profiles: number;
   replays: number;
+  /** What the plan costs at target.requests_per_second, before any of it runs. */
+  estimatedMs: number;
 }

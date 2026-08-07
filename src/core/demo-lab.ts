@@ -113,11 +113,13 @@ export async function startDemoLab(): Promise<DemoLab> {
       against: ['bob', 'anonymous'],
       similarityThreshold: 0.92,
       volatileJsonKeys: ['requestId', 'timestamp'],
+      control: true,
     },
     exclude: {
       paths: ['/public'],
       extensions: [],
     },
+    sample: {perPattern: 3},
   };
 
   return {

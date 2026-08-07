@@ -20,10 +20,13 @@ describe('complete check', () => {
         onProgress: ({stage}) => stages.add(stage),
       });
 
-      expect(result.report.summary).toMatchObject({routes: 3, reviews: 2, skipped: 2});
-      expect(result.report.findings.map(({challenger, path}) => [challenger, path])).toEqual([
-        ['bob', '/api/account/alice'],
-        ['anonymous', '/api/member/export'],
+      expect(result.report.summary).toMatchObject({routes: 3, findings: 2, skipped: 2});
+      expect(result.report.findings.map(({path, confidence, crossings}) =>
+        [path, confidence, crossings.map(({challenger}) => challenger)])).toEqual([
+        // Reached by a session carrying nothing at all, which is the strongest
+        // thing the tool can say and why this one sorts above the other.
+        ['/api/member/export', 'high', ['control', 'anonymous']],
+        ['/api/account/alice', 'high', ['bob']],
       ]);
       expect(stages).toEqual(new Set(['capture', 'scope', 'replay', 'compare', 'report']));
 
