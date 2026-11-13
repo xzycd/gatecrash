@@ -59,7 +59,7 @@
   "dependencies": {
     "commander": "^15.0.0",
     "parse5": "^8.0.1",
-    "yaml": "^2.9.0"
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
